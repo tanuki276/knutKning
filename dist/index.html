@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#091c23">
+  <title>NULL TIDE — 深層の記録</title><meta name="description" content="音で闇を読み、沈んだ記録を持ち帰る。3つの海域を巡る、海底探索ローグライト。">
+  <link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="ocean" aria-label="海底探索ゲームの画面"></canvas><div class="grain" aria-hidden="true"></div><div class="frame" aria-hidden="true"></div>
+  <header id="header"><a class="brand" href="./" aria-label="NULL TIDE タイトルへ"><span class="brand-mark">◈</span><span>ABYSSAL ARCHIVE<small>深層記録保管局</small></span></a><div class="header-actions"><span class="connection"><i></i> SYSTEM ONLINE</span><button id="sound" class="icon-button" aria-label="音を切り替え" aria-pressed="true">SOUND <span>ON</span></button><button id="help" class="icon-button">操作ガイド <b>?</b></button><button id="pause" class="icon-button hidden" aria-label="一時停止">Ⅱ</button></div></header>
+  <main id="title-screen" class="title-screen">
+    <div class="eyebrow"><span></span> AN EXPLORATION INTO THE FORGOTTEN</div>
+    <h1>NULL<span>TIDE<span class="title-dot">.</span></span></h1>
+    <div class="title-jp"><span>深</span><span>層</span><span>の</span><span>記</span><span>録</span><i></i></div>
+    <p class="intro">海は、すべてを忘れた。<br>その底で、まだ誰かが呼んでいる。</p>
+    <button id="start" class="primary"><span>潜航を開始する<small>BEGIN EXPEDITION</small></span><span class="button-arrow">↘</span></button>
+    <div class="session-note"><span>01 — 03 海域</span><span>1 PLAY / 約 8–12 分</span></div>
+    <p id="best-title" class="best-title"></p>
+  </main>
+  <aside id="title-depth" class="title-depth" aria-hidden="true"><span>DEPTH BELOW SURFACE</span><strong>0,840<small>m</small></strong><div class="depth-line"></div><span>SECTOR 01<br>忘却の庭</span></aside>
+  <footer id="title-footer"><span>01 / THE FORGOTTEN GARDEN</span><span class="footer-caption"><i></i> 失われた信号を、探して。</span><button id="credits">FIELD NOTES & CREDITS ↗</button></footer>
+  <section id="hud" class="hidden" aria-label="潜航状況">
+    <div class="mission"><span class="micro" id="sector-label">SECTOR 01 / 03</span><h2 id="sector-name">忘却の庭</h2><div class="objective" id="objective">記録を回収する <b>0 / 3</b></div></div>
+    <div class="telemetry"><div class="micro">HULL INTEGRITY</div><div id="health" aria-label="機体耐久"></div><div class="score"><span id="score">000000</span><small>DATA</small></div></div>
+    <div class="oxygen"><div class="oxygen-heading"><span class="micro">O₂ / 酸素残量</span><strong id="oxygen-value">03:30</strong></div><div class="oxygen-track"><i id="oxygen-bar"></i></div><div class="micro bottom-meta"><span id="depth-label">0840 m</span><span id="time">00:00</span></div></div>
+    <div class="abilities"><button id="pulse" class="ability"><span class="ability-icon">◎</span><span><strong>ソナー</strong><small><kbd>SPACE</kbd><em id="pulse-status">READY</em></small></span><i id="pulse-fill"></i></button><button id="dash" class="ability"><span class="ability-icon dash-icon">»</span><span><strong>緊急加速</strong><small><kbd>SHIFT</kbd><em id="dash-status">READY</em></small></span><i id="dash-fill"></i></button></div>
+    <div class="map-panel"><button id="map-toggle" class="micro" aria-expanded="true">BATHYMETRY <span>−</span></button><canvas id="minimap" width="146" height="106" aria-label="海底マップ。黄が記録、中央の四角が帰還点"></canvas><div class="map-legend"><i></i> 記録 <b>□</b> 帰還点</div></div>
+    <div id="waypoint" class="waypoint"></div>
+    <div id="interact" class="interact hidden"><button id="interact-button"><kbd>E</kbd><span id="interact-label">長押しで記録を回収</span><span class="interact-arrow">↗</span><i id="interact-progress"></i></button></div>
+    <div id="joystick" aria-label="ドラッグして移動"><div id="joystick-knob"></div><span>MOVE</span></div>
+  </section>
+  <div id="toast" role="status" class="toast hidden"><span id="toast-title"></span><small id="toast-body"></small></div>
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div id="modal-content" class="modal-content"></div></div>
+  <script type="module" src="src/main.js"></script>
+</body></html>
