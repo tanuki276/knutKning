@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0a2b37">
   <title>深層の記録 — NULL TIDE</title>
-  <meta name="description" content="小さな潜水艇で、沈んだ街へ。ソナーを頼りに記録を集める、全3海域の海底探索ゲーム。PC・スマホで遊べます。">
+  <meta name="description" content="深海へ潜り続け、全24種類の魚図鑑を完成させよう。タップで捕獲する海底探索ゲーム。スマホは横向きで遊べます。">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preload" href="assets/cover.svg" as="image">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <canvas id="ocean" aria-label="海底探索ゲームの画面"></canvas>
+  <canvas id="ocean" aria-label="深海の魚図鑑ゲームの画面"></canvas>
   <div class="cover" aria-hidden="true">
     <img class="cover-sea" src="assets/cover.svg" alt="">
     <div class="cover-sub"><img src="assets/submersible.svg" alt=""><i class="sub-bubble one"></i><i class="sub-bubble two"></i><i class="sub-bubble three"></i></div>
@@ -19,7 +19,7 @@
   </div>
   <header id="header">
     <a class="brand" href="./" aria-label="NULL TIDE タイトルへ"><svg class="brand-mark" aria-hidden="true"><use href="assets/icons.svg#sub"></use></svg><span>NULL TIDE</span></a>
-    <div class="header-actions">
+    <div class="header-actions"><button id="fullscreen" class="utility-button" aria-label="全画面で遊ぶ"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#fullscreen"></use></svg><span>全画面</span></button>
       <button id="sound" class="utility-button" aria-label="サウンドをオフにする" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sound-on"></use></svg><span>音あり</span></button>
       <button id="journal" class="utility-button" aria-label="生きもの図鑑と海図"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#fish"></use></svg><span>図鑑</span></button>
       <button id="help" class="utility-button" aria-label="あそびかた"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#book"></use></svg><span>あそびかた</span></button>
@@ -29,52 +29,53 @@
   <main id="title-screen" class="title-screen">
     <p class="eyebrow"><span class="little-wave">〜</span> 海底探索アドベンチャー</p>
     <h1><span>深層の</span><span>記録<span class="title-period">。</span></span></h1>
-    <p class="intro">魚を追い、沈船を探し、街の記憶を拾う。<br>小さな潜水艇で、まだ見ぬ海へ。</p>
+    <p class="intro">潜るほど、まだ見ぬ魚に出会える。<br>24種を集めて、深海の図鑑を完成させよう。</p>
     <div class="start-actions">
-      <button id="start" class="primary"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#play"></use></svg><span>はじめる</span><kbd>Enter</kbd></button>
-      <button id="title-help" class="title-help">あそびかた<span aria-hidden="true">↗</span></button>
+      <button id="start" class="primary"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#play"></use></svg><span id="start-label">潜りはじめる</span><kbd>Enter</kbd></button>
+      <button id="fresh-start" class="title-help hidden">浅瀬から</button><button id="title-help" class="title-help">あそびかた<span aria-hidden="true">↗</span></button>
     </div>
-    <p class="session-note">ひとり用 <span>·</span> 全3海域 <span>·</span> 8種類の生きもの</p>
+    <p class="session-note">スマホは横向き <span>·</span> 全24種 <span>·</span> 進行を自動保存</p>
     <p id="best-title" class="best-title"></p>
   </main>
   <aside id="title-depth" class="dive-tag" aria-label="最初の海域">
-    <div class="tag-top"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sub"></use></svg><span>今回の潜航先</span></div>
-    <strong>忘却の庭</strong><span class="tag-depth">水深 <b>840</b> m</span>
-    <div class="tag-bottom"><span>01</span><i></i><span>02</span><i></i><span>03</span></div>
+    <div class="tag-top"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sub"></use></svg><span>図鑑を完成させよう</span></div>
+    <strong>サンゴの浅瀬</strong><span class="tag-depth">水深 <b>200</b> m</span>
+    <div class="tag-bottom"><span>浅海</span><i></i><span>深海</span><i></i><span>深淵</span></div>
   </aside>
   <footer id="title-footer"><span>光の届かないところに、残っているもの。</span><button id="credits">制作ノート <span aria-hidden="true">↗</span></button></footer>
   <section id="hud" class="hidden" aria-label="潜航状況">
     <div class="mission">
-      <div class="mission-heading"><span class="sector-number" id="sector-label">海域 1 / 3</span><h2 id="sector-name">忘却の庭</h2></div>
-      <div class="objective" id="objective">記録を集める <b>0 / 3</b></div>
-      <button id="survey-progress" class="survey-progress">生態調査 0 / 3 · 探索 0%</button>
+      <div class="mission-heading"><span class="sector-number" id="sector-label">水深 200 m</span><h2 id="sector-name">サンゴの浅瀬</h2></div>
+      <div class="objective" id="objective">魚図鑑 <b>0 / 24</b></div>
+      <button id="survey-progress" class="survey-progress">この深度の魚を探そう</button>
     </div>
     <div class="ship-status">
       <div class="telemetry"><span>機体の耐久</span><div id="health" aria-label="機体の耐久"></div></div>
       <div class="oxygen">
         <div class="oxygen-heading"><span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#tank"></use></svg>酸素</span><strong id="oxygen-value">05:00</strong></div>
         <div class="oxygen-track"><i id="oxygen-bar"></i></div>
-        <div class="bottom-meta"><span id="depth-label">水深 840 m</span><span id="time">00:00</span></div>
+        <div class="bottom-meta"><span id="depth-label">水深 200 m</span><span id="time">00:00</span></div>
       </div>
     </div>
     <div class="score"><span id="score">0</span><small>pt</small></div>
     <div class="abilities">
-      <button id="net" class="ability"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#net"></use></svg><span><strong>魚を捕まえる</strong><small id="net-status">長押し</small></span><kbd>F</kbd><i id="net-fill"></i></button>
+      <button id="net" class="ability" aria-pressed="false" aria-label="魚の捕獲を切り替える"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#net"></use></svg><span><strong id="net-label">捕獲</strong><small id="net-status">タップで開始</small></span><kbd>F</kbd><i id="net-fill"></i></button>
       <button id="bait" class="ability"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#bait"></use></svg><span><strong>餌をまく</strong><small id="bait-status">残り 4 個</small></span><kbd>Q</kbd><i id="bait-fill"></i></button>
       <button id="pulse" class="ability"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#sonar"></use></svg><span><strong>ソナー</strong><small id="pulse-status">使用可能</small></span><kbd>Space</kbd><i id="pulse-fill"></i></button>
       <button id="dash" class="ability"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#boost"></use></svg><span><strong>緊急加速</strong><small id="dash-status">使用可能</small></span><kbd>Shift</kbd><i id="dash-fill"></i></button>
     </div>
     <div class="map-panel">
       <button id="map-toggle" aria-expanded="true"><span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#map"></use></svg>海底マップ</span><span id="map-symbol" aria-hidden="true">−</span></button>
-      <div id="map-content"><canvas id="minimap" width="246" height="178" aria-label="黄は記録、中央の四角は帰還点、白は自分の位置"></canvas><div class="map-legend"><i></i> 記録 <b>□</b> 補給基地</div></div>
+      <div id="map-content"><canvas id="minimap" width="246" height="178" aria-label="黄は潜降口、四角は補給基地、白は自分の位置"></canvas><div class="map-legend"><i></i> 潜降口 <b>□</b> 補給基地</div></div>
     </div>
     <div id="waypoint" class="waypoint"></div><div id="fish-hint" class="fish-hint hidden"></div>
-    <div id="interact" class="interact hidden"><button id="interact-button"><kbd>E</kbd><span id="interact-label">長押しで記録を回収</span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#archive"></use></svg><i id="interact-progress"></i></button></div>
-    <div id="joystick" aria-label="ドラッグして移動"><div id="joystick-knob"></div><span>移動</span></div>
+    <div id="interact" class="interact hidden"><button id="interact-button"><kbd>E</kbd><span id="interact-label">タップで調べる</span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#archive"></use></svg><i id="interact-progress"></i></button></div>
+    <div id="movement-zone" aria-label="左側をドラッグして移動"><div id="joystick" aria-label="ドラッグして移動"><div id="joystick-knob"></div><span>移動</span></div></div>
     <div class="movement-hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>移動</span></div>
   </section>
   <div id="toast" role="status" class="toast hidden"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sub"></use></svg><div><span id="toast-title"></span><small id="toast-body"></small></div></div>
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div id="modal-content" class="modal-content"></div></div>
+  <section id="rotate-screen" class="rotate-screen" aria-label="横向きで遊んでください"><svg viewBox="0 0 120 100" aria-hidden="true"><rect x="25" y="31" width="70" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><path d="M85 15a39 39 0 0 0-58 0m0 0 2-14m-2 14 14-2" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="86" cy="51" r="2" fill="currentColor"/></svg><h2>スマホを横にしてね</h2><p>左手で移動、右手で魚を捕獲。<br>縦向きの間はゲームを停止しています。</p><button id="rotate-fullscreen" class="primary">全画面で遊ぶ</button><small>自動で切り替わらない場合は、端末を横にしてください。</small></section>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>

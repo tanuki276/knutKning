@@ -16,4 +16,4 @@
   <symbol id="fish" viewBox="0 0 28 28"><path d="M9 14c7-12 14-7 17 0-5 8-12 10-17 0Zm0 0-7-6v12l7-6Z"/><circle cx="21" cy="12" r="1"/></symbol>
   <symbol id="net" viewBox="0 0 28 28"><circle cx="16" cy="11" r="8"/><path d="m10 17-8 9m8-18h12M9 13h14M14 4v14m5-14v14"/></symbol>
   <symbol id="bait" viewBox="0 0 28 28"><path d="M14 3v9m-5-3 5 5 5-5M5 19q9 8 18 0"/><circle cx="8" cy="17" r="1"/><circle cx="17" cy="20" r="1"/><circle cx="21" cy="15" r="1"/></symbol>
-</svg>
+<symbol id="fullscreen" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"/></symbol></svg>

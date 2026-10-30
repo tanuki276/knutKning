@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Expedition,generate,TILE,COLS,ROWS,dist,solid} from '../dist/src/world.js';
+import {Expedition,generate,TILE,COLS,ROWS,dist,solid,availableSpecies,sectorInfo} from '../dist/src/world.js';
 import {SPECIES,fishSVG} from '../dist/src/species.js';
 const run=(g,seconds,input={})=>{for(let n=0;n<Math.round(seconds*60);n++)g.tick(1/60,input);};
 function specimen(g,species=0,offset=30){const p=g.player;const f={id:900,species,x:p.x+offset,y:p.y,homeX:p.x+offset,homeY:p.y,angle:0,phase:0,alert:0,caught:false};g.map.fish=[f];g.map.enemies=[];return f;}
 
-test('the sea is 2.8 times larger and has all eight species across the campaign',()=>{
-  assert.ok(COLS*ROWS/(73*53)>2.8);const kinds=new Set();for(let i=0;i<3;i++)for(const fish of generate(15,i).fish)kinds.add(fish.species);assert.equal(kinds.size,8);
+test('all twenty-four species are guaranteed in their depth bands',()=>{
+  assert.ok(COLS*ROWS/(73*53)>2.8);const kinds=new Set();for(let i=0;i<20;i++){const m=generate(15,i),present=new Set(m.fish.map(f=>f.species));for(const species of availableSpecies(i))assert.ok(present.has(species));for(const fish of m.fish){const type=SPECIES[fish.species],depth=sectorInfo(i).depth;assert.ok(depth>=type.minDepth&&depth<=type.maxDepth);kinds.add(fish.species);}}assert.equal(kinds.size,24);
 });
 test('holding the net nearby catches a fish once and awards its species value',()=>{
   const g=new Expedition(5),f=specimen(g);run(g,.2);const score=g.score;run(g,1.2,{net:true});assert.equal(f.caught,true);assert.deepEqual(g.catches,[0]);assert.equal(g.score-score,SPECIES[0].value);run(g,5,{net:true});assert.equal(g.catches.length,1);assert.equal(g.events.filter(e=>e.type==='catch').length,1);
@@ -54,5 +54,5 @@ test('catches and findings carry across sectors; ecology and exploration reset',
   const g=new Expedition(5);specimen(g);run(g,2,{net:true});g.salvaged=2;g.state='upgrade';g.upgrade('sonar');assert.deepEqual(g.catches,[0]);assert.equal(g.salvaged,2);assert.equal(g.fishCount,0);assert.equal(g.researchDone,false);assert.equal(g.baitCount,4);assert.ok(g.exploration()<10);
 });
 test('species have unique IDs and a complete illustration for every entry',()=>{
-  assert.equal(new Set(SPECIES.map(f=>f.id)).size,8);for(let i=0;i<8;i++)assert.ok(fishSVG(i).includes('<svg'));
+  assert.equal(new Set(SPECIES.map(f=>f.id)).size,24);for(let i=0;i<SPECIES.length;i++)assert.ok(fishSVG(i).includes('<svg'));
 });
