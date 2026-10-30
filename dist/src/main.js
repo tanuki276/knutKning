@@ -245,7 +245,7 @@ function journal(returnTo=mode,showChart=false) {
     <p>${sectorInfo(game.sector).name} · 水深 ${sectorInfo(game.sector).depth.toLocaleString()} m · 潮流鍵 ${game.map.cores.filter(k=>k.done).length}/3<br>開拓ボーナス：酸素 ${benefit.oxygen}秒 / 捕獲速度 ×${benefit.capture.toFixed(2)} / この深度の報酬 ×${depthBenefits(game.sector).reward.toFixed(2)}</p>
     <div class="journal-tabs" role="tablist"><button id="codex-tab" role="tab" aria-selected="true">魚図鑑 ${known.toLocaleString()} / ${SPECIES.length.toLocaleString()}</button><button id="chart-tab" role="tab" aria-selected="false">海図・潮流鍵</button></div>
     <div id="codex-panel" role="tabpanel"><div class="catalog-filters"><input id="fish-search" type="search" placeholder="和名・学名・科名で検索" aria-label="魚の名前を検索"><select id="fish-filter" aria-label="図鑑の表示"><option value="all">すべて</option><option value="known">捕獲済み</option><option value="unknown">未捕獲</option><option value="depth">この深度で出会える魚</option></select></div><p id="catalog-results"></p><div id="catalog-grid" class="codex-grid"></div><div class="catalog-pages"><button id="fish-prev" class="secondary">前の24種</button><span id="fish-page"></span><button id="fish-next" class="secondary">次の24種</button></div><p>実在する魚の和名・学名を収録。出現深度・色・大きさはゲーム用の表現です。図鑑の全種類を、魚群を更新しながら捕獲できます。</p><a href="https://www.gbif.org/dataset/6b6b2923-0a10-4708-b170-5b7c611aceef" target="_blank" rel="noreferrer">名称データ：ENA taxonomy / GBIF ↗</a></div>
-    <div id="chart-panel" class="hidden" role="tabpanel"><p class="chart-legend">水色：潮流鍵（3つ＋神殿の謎で開放） / 黄：潜降 / 青：上昇 / □：補給</p><p class="chart-explanation">上昇は自由です。集めた鍵と海図は再訪しても残ります。補給ブイで魚群を更新すると、未捕獲の魚を優先して探せます。</p><canvas id="large-chart" width="738" height="534" aria-label="潮流鍵と上下の移動口を示す海図"></canvas></div>
+    <div id="chart-panel" class="hidden" role="tabpanel"><p class="chart-legend">水色：潮流鍵（3つ＋神殿の謎で開放） / 紫：古代神殿 / 黄：潜降 / 青：上昇 / □：補給</p><p class="chart-explanation">上昇は自由です。集めた鍵と海図は再訪しても残ります。補給ブイで魚群を更新すると、未捕獲の魚を優先して探せます。</p><canvas id="large-chart" width="738" height="534" aria-label="潮流鍵と上下の移動口を示す海図"></canvas></div>
     <div class="modal-actions"><button class="primary" id="close-journal">${returnTo==='title'?'タイトルへ':'探索を続ける'}</button></div>`,leave);
   $('modal-content').classList.add('journal-sheet');let page=0;
   const draw=()=>{const q=$('fish-search').value.trim().toLowerCase(),filter=$('fish-filter').value,depth=sectorInfo(game.sector).depth;
@@ -355,7 +355,7 @@ function processEvents() {
     if(event.type==='ruin')ruinPuzzle();
     if(event.type==='ascent'){holding=false;renderer.setWorld(game.map);saveDive();notify(`${sectorInfo(game.sector).depth.toLocaleString()} m へ上昇`,'鍵・海図・捕獲記録はそのままです');}
     if(event.type==='school'){holding=false;notify('新しい魚群を発見','未捕獲の魚を優先して探せます');saveDive();}
-    if(event.type==='locked'){holding=false;notify('潜降口は閉じています','海図を開き、潮流鍵を3つ探そう。');}
+    if(event.type==='locked'){holding=false;notify('潜降口は閉じています',game.map.cores.every(k=>k.done)?'鍵は揃っています。古代神殿で碑文の順序を解こう。':'海図を開き、潮流鍵を3つ探そう。');}
     if(event.type==='site')holding=false;
     if(event.type==='site')notify(event.kind==='wreck'?'沈船から物資を回収しました':'生態調査ポイントを記録しました',event.kind==='wreck'?'+350 pt · 餌+2 · 酸素+40秒 · 耐久+1':'+450 pt · 餌+2 · 酸素+40秒 · 周辺の海図を更新',4);
     if(event.type==='discovery')notify(`発見：${event.name}`,'新たな探索地点を海図に記録 · +100 pt',2.5);

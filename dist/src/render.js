@@ -116,7 +116,7 @@ export class Renderer {
     const mark=(o,color,r=2)=>{c.fillStyle=color;c.fillRect(o.x/TILE*sx-r,o.y/TILE*sy-r,r*2,r*2);};
     for(const site of m.sites){const k=Math.floor(site.y/TILE)*COLS+Math.floor(site.x/TILE);if(m.seen[k])mark(site,site.done?'#5f8973':'#b4a8d7',2);}
     for(const core of m.cores){const k=Math.floor(core.y/TILE)*COLS+Math.floor(core.x/TILE);if(!core.done){mark(core,'#a4e6cb',3);if(W>400){c.fillStyle='#c8ead6';c.font='12px sans-serif';c.fillText('鍵 '+(core.id+1),core.x/TILE*sx,core.y/TILE*sy-9);}}}
-    mark(m.ruin,'#c8b48d',4);mark(m.descent,'#f0bd79',4);if(game.sector>0)mark(m.ascent,'#9acbea',3);
+    mark(m.ruin,'#c0a3d7',4);if(W>400){c.fillStyle='#d8c8e0';c.font='12px sans-serif';c.fillText('神殿',m.ruin.x/TILE*sx,m.ruin.y/TILE*sy-10);}mark(m.descent,'#f0bd79',4);if(game.sector>0)mark(m.ascent,'#9acbea',3);
     c.strokeStyle='#c5e3c4';c.lineWidth=1.5;c.strokeRect(m.hub.x/TILE*sx-4,m.hub.y/TILE*sy-4,8,8);
     c.fillStyle='#fff3d7';c.beginPath();c.arc(game.player.x/TILE*sx,game.player.y/TILE*sy,3,0,TAU);c.fill();
   }
