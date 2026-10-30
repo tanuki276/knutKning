@@ -182,7 +182,7 @@ function pause() {
     <p>潜航を止めています。酸素も減らないので、ごゆっくり。</p>
     <div class="modal-actions">
       <button class="primary" id="resume">${icon('play')}潜航を続ける</button>
-      <button class="secondary" id="warp-menu">ワープ</button><button class="secondary" id="market-menu">浅瀬の商人</button><button class="secondary" id="transfer-menu">データ引継ぎ</button><button class="secondary" id="logbook-menu">航海記録・収集品</button><button class="secondary" id="install-menu">ホーム画面に追加</button>${waitingWorker?'<button class="secondary" id="update-app">更新版を読み込む</button>':''}<button class="secondary" id="pause-journal">図鑑・海図</button><button class="secondary" id="pause-help">あそびかた</button>
+      <button class="secondary" id="warp-menu">ワープ</button><button class="secondary" id="market-menu">浅瀬の商人</button><button class="secondary" id="transfer-menu">データ引継ぎ</button><button class="secondary" id="logbook-menu">航海記録・収集品</button><button class="secondary" id="install-menu">${offlineReady?'ホーム画面追加 · オフライン準備済み':'ホーム画面に追加'}</button>${waitingWorker?'<button class="secondary" id="update-app">更新版を読み込む</button>':''}<button class="secondary" id="pause-journal">図鑑・海図</button><button class="secondary" id="pause-help">あそびかた</button>
       <button class="secondary" id="pause-fullscreen">全画面</button><button class="secondary" id="pause-sound">サウンド切替</button>
       <button class="text-button" id="abandon">タイトルへ戻る</button>
     </div>`, resume);
