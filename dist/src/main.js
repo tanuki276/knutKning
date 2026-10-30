@@ -1,4 +1,5 @@
 import { Expedition, SECTORS, dist } from './world.js';
+import { SPECIES, fishSVG } from './species.js';
 import { Renderer } from './render.js';
 import { AudioEngine } from './audio.js';
 
@@ -20,6 +21,9 @@ const save = (key, value) => {
 const renderer = new Renderer($('ocean'));
 const audio = new AudioEngine();
 let best = read('null-tide-best', 0);
+let catalog = read('null-tide-catalog', {});
+if (!catalog || Array.isArray(catalog) || typeof catalog !== 'object') catalog = {};
+catalog = Object.fromEntries(SPECIES.filter(f => Number.isSafeInteger(catalog[f.id]) && catalog[f.id] > 0).map(f => [f.id, catalog[f.id]]));
 let game = new Expedition(271828);
 let mode = 'title';
 let previous = 0;
@@ -31,6 +35,7 @@ let modalClose = null;
 let keys = new Set();
 let touch = { x: 0, y: 0 };
 let holding = false;
+let netHolding = false;
 let performanceFrames = 0;
 let performanceStart = 0;
 
@@ -54,6 +59,7 @@ function clearInput() {
   keys.clear();
   touch = { x: 0, y: 0 };
   holding = false;
+  netHolding = false;
   $('joystick-knob').style.transform = '';
 }
 
@@ -67,18 +73,19 @@ function notify(title, body = '', duration = 4) {
 function openModal(html, onClose = null) {
   oldFocus = document.activeElement;
   modalClose = onClose;
+  $('modal-content').classList.remove('journal-sheet');
   $('modal-content').innerHTML = `${onClose ? '<button class="dialog-close" id="dialog-close" aria-label="閉じる">×</button>' : ''}${html}`;
   if (onClose) $('dialog-close').onclick = onClose;
   show('modal');
   clearInput();
-  for (const id of ['header', 'title-screen', 'hud', 'title-footer']) $(id).inert = true;
+  for (const id of ['header', 'title-screen', 'title-depth', 'hud', 'title-footer']) $(id).inert = true;
   requestAnimationFrame(() => $('modal-content').querySelector('button,a,input')?.focus());
 }
 
 function closeModal() {
   hide('modal');
   modalClose = null;
-  for (const id of ['header', 'title-screen', 'hud', 'title-footer']) $(id).inert = false;
+  for (const id of ['header', 'title-screen', 'title-depth', 'hud', 'title-footer']) $(id).inert = false;
   const focusTarget = oldFocus?.isConnected ? oldFocus : mode === 'title' ? $('start') : $('pause');
   focusTarget?.focus({ preventScroll: true });
   clearInput();
@@ -103,9 +110,7 @@ function start() {
   closeModal();
   setMapExpanded(!mobile());
   updateHUD();
-  notify('まずは、3つの記録を探そう', mobile()
-    ? '左のスティックで移動。ソナーで周囲を照らせます。'
-    : 'WASD で移動、Space でソナー。回収後は中央の帰還点へ。', 5);
+  notify('魚や沈船を探しながら、3つの記録を集めよう', mobile() ? '魚にそっと近づき、捕獲ボタンを長押し。餌も使えます。' : 'WASD で移動。魚の近くで F 長押し、Q で餌。図鑑と海図は J。', 6);
 }
 
 function input() {
@@ -113,6 +118,7 @@ function input() {
     x: (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) + touch.x,
     y: (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0) - (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) + touch.y,
     interact: keys.has('KeyE') || holding,
+    net: keys.has('KeyF') || netHolding,
   };
 }
 
@@ -137,10 +143,11 @@ function pause() {
     <p>潜航を止めています。酸素も減らないので、ごゆっくり。</p>
     <div class="modal-actions">
       <button class="primary" id="resume">${icon('play')}潜航を続ける</button>
-      <button class="secondary" id="pause-help">あそびかた</button>
+      <button class="secondary" id="pause-journal">図鑑・海図</button><button class="secondary" id="pause-help">あそびかた</button>
       <button class="text-button" id="abandon">タイトルへ戻る</button>
     </div>`, resume);
   $('resume').onclick = resume;
+  $('pause-journal').onclick = () => journal('paused');
   $('pause-help').onclick = () => help('paused');
   $('abandon').onclick = () => { closeModal(); toTitle(); };
 }
@@ -169,16 +176,19 @@ function help(returnTo = mode) {
   openModal(`
     <div class="micro">あそびかた</div>
     <h2 id="modal-title">探して、集めて、持ち帰る。</h2>
-    <p>海底にある<b>3つの記録</b>を集めたら、中央の帰還点へ。<br>全3海域を探索して、沈んだ街の記憶を持ち帰ろう。</p>
+    <p>広い海底で魚の捕獲、沈船の回収、生態調査に挑戦。<br><b>3つの記録</b>を集めたら中央の基地に戻り、次の海域へ。</p>
     <div class="controls-grid">
       <div class="control"><kbd>W A S D</kbd><kbd>↑ ← ↓ →</kbd> 移動<small>機体には少し慣性があります。曲がる手前でゆっくりと。</small></div>
       <div class="control"><kbd>Space</kbd> ソナー<small>暗闇が一時的に見えるように。ただし、その音を聞いた監視機も近づいてきます。</small></div>
       <div class="control"><kbd>Shift</kbd> 緊急加速<small>加速中は無敵。ぶつかった監視機をしばらく止められます。</small></div>
       <div class="control"><kbd>E</kbd> 長押しで回収・帰還<small>記録の近くで長押し。3つそろったら、中央の帰還点でも同じ操作を。</small></div>
+      <div class="control"><kbd>F</kbd> 長押しで魚を捕獲<small>魚の近くで静かに網を広げます。ソナーや急加速の音で驚くと、捕まえられません。</small></div>
+      <div class="control"><kbd>Q</kbd> 餌をまく<small>周囲の魚を14秒間おびき寄せます。沈船や調査点で餌を補充できます。</small></div>
+      <div class="control"><kbd>J</kbd> 図鑑・大きな海図<small>捕まえた生きものは潜航を終えても図鑑に残ります。海図はソナーと移動で埋まります。</small></div>
       <div class="control"><kbd>Esc</kbd> 休憩<small>いつでも一時停止できます。画面を離れたときも自動で停止。</small></div>
       <div class="control">スマホで遊ぶとき<small>左のスティックで移動、右のボタンでソナー・加速。記録の回収ボタンは長押しです。</small></div>
     </div>
-    <p class="manual-tip">かけらを拾うと +75 pt、酸素 +3秒。補給装置は酸素 +36秒。<br>次の海域では機体と酸素が全回復し、強化をひとつ選べます。</p>
+    <p class="manual-tip">中央の調査基地は酸素と耐久を何度でも回復できます。<br>1海域で魚を3匹捕まえると調査依頼達成：+650 pt、餌+2、酸素+40秒。<br>沈船と調査点は E 長押し。次の海域で装備強化を選べます。</p>
     <label class="quality-toggle"><input type="checkbox" id="reduce" ${renderer.reduced ? 'checked' : ''}> 画面の揺れ・環境の動きを抑える</label>
     <div class="modal-actions"><button class="primary" id="close-help">${icon('arrow')}${returnTo === 'title' ? 'タイトルに戻る' : '潜航を続ける'}</button></div>`, leave);
   $('reduce').onchange = e => {
@@ -187,6 +197,27 @@ function help(returnTo = mode) {
     save('null-tide-reduced', renderer.reduced);
   };
   $('close-help').onclick = leave;
+}
+
+function journal(returnTo = mode) {
+  if (mode === 'playing') mode = 'paused';
+  const leave = () => { closeModal(); mode = returnTo === 'title' ? 'title' : 'playing'; };
+  const known = SPECIES.filter(f => catalog[f.id] > 0).length;
+  openModal(`
+    <div class="micro">${returnTo==='title'?'調査ノート · 記録は自動保存':'調査ノート · 潜航は一時停止中'}</div>
+    <h2 id="modal-title">この海で、出会ったもの。</h2>
+    <div class="journal-tabs" role="tablist"><button id="codex-tab" role="tab" aria-selected="true">生きもの図鑑 ${known} / 8</button><button id="chart-tab" role="tab" aria-selected="false">海図・探索</button></div>
+    <div id="codex-panel" role="tabpanel" aria-labelledby="codex-tab"><p>この海だけに棲む生きものたち。捕獲した記録は、次の潜航にも残ります。</p><div class="codex-grid">${SPECIES.map((f,i) => `<article class="specimen ${catalog[f.id]?'known':'unknown'}"><div class="specimen-art">${fishSVG(i)}</div><small>${catalog[f.id]?f.rarity:'未発見'} · No.0${i+1}</small><h3>${catalog[f.id]?f.name:'？？？'}</h3><p>${catalog[f.id]?f.note:'魚を捕まえると、ここに調査記録が残ります。'}</p><b>${catalog[f.id]?`${catalog[f.id]} 匹を記録 · ${f.value} pt`:'静かに近づいてみよう'}</b></article>`).join('')}</div></div>
+    <div id="chart-panel" class="hidden" role="tabpanel" aria-labelledby="chart-tab"><p>${SECTORS[game.sector].name} · 探索 ${game.exploration()}% · ${game.map.rooms.filter(r=>r.visited).length} / ${game.map.rooms.length} 地点<br>黄：記録 / 紫：沈船・調査点 / □：何度でも補給できる基地</p><canvas id="large-chart" width="738" height="534" aria-label="現在の海域の大きな海図"></canvas><p>暗い場所は未探索です。ソナーを使うと周囲の地形が海図に残ります。<br>今回の潜航：捕獲 ${game.catches.length} 匹 · サルベージ・調査 ${game.salvaged} 箇所</p></div>
+    <div class="modal-actions"><button class="primary" id="close-journal">${icon('arrow')}${returnTo==='title'?'タイトルへ':'潜航を続ける'}</button></div>`, leave);
+  $('modal-content').classList.add('journal-sheet');
+  const tab = chart => {
+    $('codex-panel').classList.toggle('hidden', chart); $('chart-panel').classList.toggle('hidden', !chart);
+    $('codex-tab').setAttribute('aria-selected', String(!chart)); $('chart-tab').setAttribute('aria-selected', String(chart));
+    if(chart) renderer.minimap($('large-chart'),game);
+  };
+  for(const id of ['codex-tab','chart-tab'])$(id).onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const chart=e.key==='End'||(e.key!=='Home'&&id==='codex-tab');tab(chart);$(chart?'chart-tab':'codex-tab').focus();}};
+  $('codex-tab').onclick=()=>tab(false); $('chart-tab').onclick=()=>tab(true); $('close-journal').onclick=leave;
 }
 
 function credits() {
@@ -249,7 +280,7 @@ function result(won, reason) {
     <div class="micro">${won ? '全3海域 · 探索完了' : '潜航終了'}</div>
     <h2 id="modal-title">${won ? 'おかえりなさい。' : '通信が途絶えました。'}</h2>
     <p class="lead">${won ? SECTORS[2].log : `${reason}。\n記録は、また次の潜航で。`}</p>
-    <div class="result-stats">
+    <p>捕獲 ${game.catches.length} 匹 · 発見 ${game.visits} 地点 · 調査 ${game.salvaged} 箇所</p><div class="result-stats">
       <div><span class="micro">スコア</span><strong>${game.score.toLocaleString()}</strong></div>
       <div><span class="micro">回収した記録</span><strong>${game.recovered} / 9</strong></div>
       <div><span class="micro">潜航時間</span><strong>${formatTime(game.elapsed, true)}</strong></div>
@@ -276,6 +307,14 @@ function processEvents() {
         ? mobile() ? '中央の帰還点へ。帰還ボタンを長押ししよう。' : '中央の帰還点へ戻り、E を長押ししよう。'
         : '+500 pt · 酸素 +15秒', 4);
     }
+    if (event.type === 'catch') {
+      const species=SPECIES[event.species],first=!catalog[species.id];catalog[species.id]=(Number(catalog[species.id])||0)+1;save('null-tide-catalog',catalog);
+      renderer.burst(event.x,event.y,species.color,25);
+      notify(`${first?'新種を図鑑に登録！ ':''}${species.name}を捕獲`, `+${species.value} pt · この海域の捕獲 ${game.fishCount} 匹`,3);
+    }
+    if(event.type==='research')notify('生態調査の依頼を達成！','+650 pt · 餌+2 · 酸素+40秒',4);
+    if(event.type==='site')notify(event.kind==='wreck'?'沈船から物資を回収しました':'生態調査ポイントを記録しました',event.kind==='wreck'?'+350 pt · 餌+2 · 酸素+40秒 · 耐久+1':'+450 pt · 餌+2 · 酸素+40秒 · 周辺の海図を更新',4);
+    if(event.type==='discovery')notify(`発見：${event.name}`,'新たな探索地点を海図に記録 · +100 pt',2.5);
     if (event.type === 'air') notify('酸素を補給しました', '+36秒。もう少し探索できます。', 2);
     if (event.type === 'hit') {
       renderer.shake = 12;
@@ -301,20 +340,24 @@ function updateHUD() {
   $('health').setAttribute('aria-label', `機体の耐久 ${p.hp} / ${game.maxHp}`);
   text('score', game.score.toLocaleString());
   text('oxygen-value', formatTime(p.oxygen));
-  $('oxygen-bar').style.width = `${Math.max(0, p.oxygen / 210 * 100)}%`;
+  $('oxygen-bar').style.width = `${Math.max(0, p.oxygen / game.maxOxygen * 100)}%`;
   $('oxygen-value').closest('.oxygen').classList.toggle('low', p.oxygen < 40);
   text('depth-label', `水深 ${sector.depth.toLocaleString()} m`);
   text('time', formatTime(game.elapsed, true));
-  for (const [id, cooldown, maximum] of [['pulse', p.pulse, 4.8], ['dash', p.dash, 2.4]]) {
-    $(id).disabled = cooldown > 0;
-    text(`${id}-status`, cooldown > 0 ? `${cooldown.toFixed(1)} 秒` : '使用可能');
+  for (const [id, cooldown, maximum] of [['pulse', p.pulse, 4.8], ['dash', p.dash, 2.4], ['net', game.netCooldown, 1.5], ['bait', game.baitCooldown, 2]]) {
+    $(id).disabled = cooldown > 0 || (id==='bait'&&game.baitCount===0);
+    text(`${id}-status`, id==='bait'?`残り ${game.baitCount} 個`:cooldown>0?`${cooldown.toFixed(1)} 秒`:id==='net'?'長押しで捕獲':'使用可能');
     $(`${id}-fill`).style.width = `${(1 - cooldown / maximum) * 100}%`;
   }
+  text('survey-progress', `生態調査 ${Math.min(3,game.fishCount)} / 3${game.researchDone?' 達成！':''} · 探索 ${game.exploration()}%`);
+  const fish=game.closestFish();
+  if(fish){show('fish-hint');text('fish-hint', `${SPECIES[fish.species].name} · ${fish.alert>.2?'驚いています。餌で落ち着かせよう':mobile()?'捕獲ボタンを長押し':'F 長押しで捕獲'}`);}else hide('fish-hint');
+  if(game.catchProgress>0){$('net-fill').style.width=`${game.catchProgress*100}%`;text('net-status',`捕獲中 ${Math.round(game.catchProgress*100)}%`);}
   const near = game.near();
-  if (near?.kind === 'core' || (near?.kind === 'exit' && count === 3)) {
+  if (['core','wreck','survey'].includes(near?.kind) || (near?.kind === 'exit' && count === 3)) {
     show('interact');
-    text('interact-label', near.kind === 'core' ? '長押しで記録を回収' : '長押しで帰還する');
-    $('interact-progress').style.width = `${(near.kind === 'core' ? near.target.progress : game.extraction / 1.2) * 100}%`;
+    text('interact-label', near.kind==='wreck'?'長押しで物資を回収':near.kind==='survey'?'長押しで周囲を調査':near.kind==='core'?'長押しで記録を回収':'長押しで帰還する');
+    $('interact-progress').style.width = `${(near.kind!=='exit'?near.target.progress:game.extraction/1.2) * 100}%`;
   } else {
     hide('interact');
     holding = false;
@@ -326,6 +369,7 @@ function updateHUD() {
     const arrow = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'][(Math.round(angle / (Math.PI / 4)) + 8) % 8];
     $('waypoint').innerHTML = `<span class="direction">${arrow}</span>${count === 3 ? '帰還点' : '記録の信号'}<b>${Math.round(dist(p, target) / 6)} m</b>`;
   }
+  if(near?.kind==='exit'&&count<3&&(!fish||p.oxygen<game.maxOxygen-5)){show('fish-hint');text('fish-hint','基地に接続中 · 酸素・耐久を補給しています');}
   if ($('map-toggle').getAttribute('aria-expanded') === 'true') renderer.minimap($('minimap'), game);
 }
 
@@ -336,6 +380,9 @@ function updateSound() {
 }
 
 $('start').onclick = start;
+$('journal').onclick = () => journal();
+$('survey-progress').onclick = () => journal();
+$('bait').onclick = () => { if(mode==='playing'){game.bait();updateHUD();} };
 $('title-help').onclick = () => help('title');
 $('pulse').onclick = pulse;
 $('dash').onclick = dash;
@@ -362,6 +409,9 @@ $('interact-button').addEventListener('pointerdown', e => {
 for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
   $('interact-button').addEventListener(type, () => { holding = false; });
 }
+
+$('net').addEventListener('pointerdown', e => { if(mode!=='playing')return;e.preventDefault();netHolding=true;e.currentTarget.setPointerCapture(e.pointerId); });
+for(const type of ['pointerup','pointercancel','lostpointercapture'])$('net').addEventListener(type,()=>netHolding=false);
 
 let stickId = null;
 let stickCenter = null;
@@ -407,8 +457,9 @@ document.addEventListener('keydown', e => {
     }
     return;
   }
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyE'].includes(e.code)) e.preventDefault();
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyE', 'KeyF', 'KeyQ', 'KeyJ'].includes(e.code)) e.preventDefault();
   if (e.code === 'Escape') { pause(); return; }
+  if(e.code==='KeyJ'&&!e.repeat&&['title','playing'].includes(mode)){journal();return;}
   const focusedControl = document.activeElement?.closest('button,a,input');
   if (mode === 'title' && e.code === 'Enter' && (!focusedControl || focusedControl.id === 'start')) {
     e.preventDefault();
@@ -419,6 +470,7 @@ document.addEventListener('keydown', e => {
   keys.add(e.code);
   if (e.repeat) return;
   if (e.code === 'Space') pulse();
+  if(e.code==='KeyQ')game.bait();
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') dash();
 });
 document.addEventListener('keyup', e => keys.delete(e.code));
