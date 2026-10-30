@@ -2,9 +2,9 @@
 
 音で闇を読み、沈んだ街の記録を持ち帰る海底探索ゲーム。ブラウザだけで遊べます。
 
-**[ゲームを遊ぶ](https://null-tide-knutkning.t06020118.chatgpt.site)**
+**[ゲームを遊ぶ](https://knutkning.vercel.app)**
 
-![NULL TIDE タイトル画面](docs/null-tide-title.jpg)
+![深層の記録 タイトル画面](docs/null-tide-ui-v2.jpg)
 
 ## ゲーム
 
@@ -48,6 +48,18 @@ Node.js 20 以降で検証できます。
 npm run check
 npm test
 ```
+
+## Vercel へのデプロイ
+
+`vercel.json` に静的サイト用の設定を含めています。Framework は Other、Output Directory は `dist`、Build Command と Install Command は空欄です。外部サービスや環境変数は不要です。
+
+## UI とイラスト
+
+日本語のタイトル、潜水艇のカバーイラスト、紙の質感を意識したメニュー、ソナー・加速用の独自アイコンで統一しています。スマホの地図はボタンで開閉でき、操作領域を広く確保します。
+
+- `dist/assets/cover.svg`: 海底のカバーイラスト。`python3 scripts/draw-cover.py` で再描画できます。
+- `dist/assets/submersible.svg`: 潜水艇のベクターイラスト。
+- `dist/assets/icons.svg`: 操作用のSVGアイコン。
 
 ## 構造
 

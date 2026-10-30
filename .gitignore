@@ -2,3 +2,4 @@ node_modules/
 .DS_Store
 .openai/*.local.*
 *.zip
+.vercel/
