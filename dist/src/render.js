@@ -84,6 +84,7 @@ export class Renderer {
       if(site.progress>0&&!site.done){c.strokeStyle='#f1d49c';c.lineWidth=3;c.beginPath();c.arc(0,0,47,-Math.PI/2,-Math.PI/2+TAU*site.progress);c.stroke();}c.restore();
     }
     for(const bait of game.baits){c.strokeStyle='#d5b17a66';c.beginPath();c.arc(bait.x,bait.y,23+Math.sin(time*3)*5,0,TAU);c.stroke();c.fillStyle='#e4ae70';for(let i=0;i<5;i++)c.fillRect(bait.x+Math.sin(i*2.3)*8,bait.y+Math.cos(i*2.3)*8,3,3);}
+    const labeledFish=this.compact?game.closestFish()?.id:null;
     for(const f of m.fish){if(f.caught||f.x<sx||f.x>ex||f.y<sy||f.y>ey)continue;const type=SPECIES[f.species],size=type.size;
       if(type.rarity==='希少'||type.shape==='jelly')this.glow(c,f.x,f.y,45,type.color,.12);
       c.save();c.translate(Math.round(f.x),Math.round(f.y));c.rotate(f.angle);c.fillStyle=type.fin;
@@ -94,7 +95,7 @@ export class Renderer {
         else{c.fillRect(-size+3,-6,size*2-4,12);c.fillRect(-size+7,-9,size,18);c.fillStyle=type.fin;c.fillRect(-3,-12,7,5);c.fillRect(-3,7,7,5);}
         c.fillStyle='#e9f4d8';c.fillRect(3,-6,5,4);c.fillStyle='#10343e';c.fillRect(6,-5,3,3);if(type.shape==='shrimp'){c.strokeStyle=type.color;c.lineWidth=1;c.beginPath();c.moveTo(size,0);c.lineTo(size+12,-7);c.moveTo(size,2);c.lineTo(size+13,5);c.stroke();}}
       c.restore();
-      if(dist(f,game.player)<120){c.font='10px sans-serif';c.textAlign='center';c.fillStyle=f.alert>0?'#e7a489':type.rarity==='希少'?'#f5d7a1':'#bddebf';c.fillText((type.rarity==='希少'?'✦ ':'')+type.name+(f.alert>0?' !':''),f.x,f.y-size-15);}
+      if(dist(f,game.player)<120&&(!this.compact||f.id===labeledFish)){c.font='10px sans-serif';c.textAlign='center';c.fillStyle=f.alert>0?'#e7a489':type.rarity==='希少'?'#f5d7a1':'#bddebf';c.fillText((type.rarity==='希少'?'✦ ':'')+type.name+(f.alert>0?' !':''),f.x,f.y-size-15);}
     }
   }
   minimap(canvas,game){

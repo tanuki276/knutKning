@@ -23,7 +23,7 @@
       <button id="sound" class="utility-button" aria-label="サウンドをオフにする" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sound-on"></use></svg><span>音あり</span></button>
       <button id="journal" class="utility-button" aria-label="生きもの図鑑と海図"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#fish"></use></svg><span>図鑑</span></button>
       <button id="help" class="utility-button" aria-label="あそびかた"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#book"></use></svg><span>あそびかた</span></button>
-      <button id="pause" class="utility-button hidden" aria-label="一時停止"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pause"></use></svg><span>休憩</span><kbd>Esc</kbd></button>
+      <button id="pause" class="utility-button hidden" aria-label="メニュー・一時停止"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#menu"></use></svg><span>メニュー</span><kbd>Esc</kbd></button>
     </div>
   </header>
   <main id="title-screen" class="title-screen">
@@ -46,7 +46,7 @@
   <section id="hud" class="hidden" aria-label="潜航状況">
     <div class="mission">
       <div class="mission-heading"><span class="sector-number" id="sector-label">水深 200 m</span><h2 id="sector-name">サンゴの浅瀬</h2></div>
-      <div class="objective" id="objective">魚図鑑 <b>0 / 24</b></div>
+      <button class="objective" id="objective" aria-label="魚図鑑を開く">魚図鑑 <b>0 / 24</b></button>
       <button id="survey-progress" class="survey-progress">この深度の魚を探そう</button>
     </div>
     <div class="ship-status">
@@ -60,9 +60,12 @@
     <div class="score"><span id="score">0</span><small>pt</small></div>
     <div class="abilities">
       <button id="net" class="ability" aria-pressed="false" aria-label="魚の捕獲を切り替える"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#net"></use></svg><span><strong id="net-label">捕獲</strong><small id="net-status">タップで開始</small></span><kbd>F</kbd><i id="net-fill"></i></button>
-      <button id="bait" class="ability"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#bait"></use></svg><span><strong>餌をまく</strong><small id="bait-status">残り 4 個</small></span><kbd>Q</kbd><i id="bait-fill"></i></button>
+      <div id="field-tools" class="field-tools" aria-label="探索の道具">
+      <button id="bait" class="ability"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#bait"></use></svg><span><strong>餌</strong><small id="bait-status">残り 4 個</small></span><kbd>Q</kbd><i id="bait-fill"></i></button>
       <button id="pulse" class="ability"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#sonar"></use></svg><span><strong>ソナー</strong><small id="pulse-status">使用可能</small></span><kbd>Space</kbd><i id="pulse-fill"></i></button>
-      <button id="dash" class="ability"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#boost"></use></svg><span><strong>緊急加速</strong><small id="dash-status">使用可能</small></span><kbd>Shift</kbd><i id="dash-fill"></i></button>
+      </div>
+      <button id="dash" class="ability"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#boost"></use></svg><span><strong>加速</strong><small id="dash-status">使用可能</small></span><kbd>Shift</kbd><i id="dash-fill"></i></button>
+      <button id="tools-toggle" class="ability tools-toggle" aria-label="道具を開く" aria-expanded="false" aria-controls="field-tools"><svg class="ability-icon" aria-hidden="true"><use href="assets/icons.svg#tools"></use></svg><strong>道具</strong></button>
     </div>
     <div class="map-panel">
       <button id="map-toggle" aria-expanded="true"><span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#map"></use></svg>海底マップ</span><span id="map-symbol" aria-hidden="true">−</span></button>
