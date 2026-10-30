@@ -3,6 +3,8 @@ import { SPECIES, fishSVG } from './species.js';
 import { Renderer } from './render.js';
 import { bindGameAction, bindThumbStick, portraitViewport } from './controls.js';
 import { AudioEngine } from './audio.js';
+import {MILESTONES,RELICS,collectionRank,relicSVG} from './progression.js';
+import {readDive,writeDive} from './storage.js';
 
 const $ = id => document.getElementById(id);
 const hide = id => $(id).classList.add('hidden');
@@ -26,16 +28,16 @@ let best = read('null-tide-best', 0);
 let catalog = read('null-tide-real-catalog-v4', {});
 if (!catalog || Array.isArray(catalog) || typeof catalog !== 'object') catalog = {};
 catalog = Object.fromEntries(SPECIES.filter(f => Number.isSafeInteger(catalog[f.id]) && catalog[f.id] > 0).map(f => [f.id, catalog[f.id]]));
-let checkpoint = read('null-tide-dive-v4', null) ?? read('null-tide-dive-v3', null);
-if(checkpoint?.version===3)checkpoint={...checkpoint,version:4,maxSector:checkpoint.sector,catches:[],floors:{},cycles:{}};
-if(!checkpoint||checkpoint.version!==4||!Number.isSafeInteger(checkpoint.seed)||!Number.isSafeInteger(checkpoint.sector)||checkpoint.sector<0||checkpoint.sector>1000000)checkpoint=null;
-let deepest = Number(read('null-tide-deepest-v4',read('null-tide-deepest',200)))||200;
-let game = new Expedition(271828,{known:Object.keys(catalog)});
+let checkpoint;try{checkpoint=readDive(localStorage);}catch{checkpoint=null;}
+let deepest = Math.max(Number(read('null-tide-deepest-v4',read('null-tide-deepest',200)))||200,checkpoint?sectorInfo(checkpoint.maxSector??checkpoint.sector).depth:200);
+let game = new Expedition(271828,{...checkpoint,sector:0,known:Object.keys(catalog)});
 let mode = 'title';
 let previous = 0;
 let accumulator = 0;
 let hudTime = 0;
 let toastTimer = 0;
+let catchTimer=0,autosaveTimer=0,needsRender=true,storageWarning=false;
+let installPrompt=null,waitingWorker=null,offlineReady=false;
 let oldFocus = null;
 let modalClose = null;
 let keys = new Set();
@@ -46,7 +48,7 @@ let thumbStick = null;
 let performanceFrames = 0;
 let performanceStart = 0;
 
-renderer.setWorld(game.map);
+// The title illustration needs no full sea-floor texture. Build it on departure.
 renderer.reduced = read('null-tide-reduced', renderer.reduced);
 document.body.classList.toggle('reduce-motion', renderer.reduced);
 audio.enabled = read('null-tide-sound', true);
@@ -89,9 +91,10 @@ function notify(title, body = '', duration = 4) {
 }
 
 function openModal(html, onClose = null) {
+  needsRender=true;
   oldFocus = document.activeElement;
   modalClose = onClose;
-  $('modal-content').classList.remove('journal-sheet','chart-view','guide-sheet','intro-guide');
+  $('modal-content').classList.remove('journal-sheet','chart-view','guide-sheet','intro-guide','logbook-sheet');
   $('modal-content').innerHTML = `${onClose ? '<button class="dialog-close" id="dialog-close" aria-label="閉じる">×</button>' : ''}${html}`;
   if (onClose) $('dialog-close').onclick = onClose;
   show('modal');
@@ -117,8 +120,8 @@ function setMapExpanded(expanded) {
 }
 
 function saveDive(){
-  checkpoint=game.snapshot();save('null-tide-dive-v4',checkpoint);
-  deepest=Math.max(deepest,sectorInfo(game.sector).depth);save('null-tide-deepest-v4',deepest);
+  checkpoint=game.snapshot();let stored=false;try{stored=writeDive(localStorage,checkpoint);}catch{}if(!stored&&!storageWarning){storageWarning=true;notify('端末に保存できません','メニューのデータ引継ぎからコードを保存してください。',8);}
+  deepest=Math.max(deepest,sectorInfo(game.maxSector).depth);save('null-tide-deepest-v4',deepest);
 }
 async function enterFullscreen(){
   try{if(!document.fullscreenElement&&document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch{}
@@ -129,16 +132,16 @@ function syncViewport(){
   document.body.classList.toggle('phone-landscape',mobile()&&!rotate);
   renderer.compact = mobile() && !rotate;
   setToolsExpanded(false);
-  for(const id of ['header','title-screen','title-depth','hud','title-footer'])$(id).inert=rotate||!$('modal').classList.contains('hidden');
+  for(const id of ['header','title-screen','title-depth','hud','title-footer','catch-card'])$(id).inert=rotate||!$('modal').classList.contains('hidden');
   $('modal').inert=rotate;
   if(rotate)clearInput();
 }
 function start(fresh=false) {
   audio.init();audio.play('sector');
   if(mobile()&&window.top===window.self)enterFullscreen();
-  const source=!fresh&&checkpoint?checkpoint:null;
+  const source=checkpoint?{...checkpoint,sector:fresh?0:checkpoint.sector}:null;
   game=new Expedition(source?.seed??crypto.getRandomValues(new Uint32Array(1))[0],{...source,known:Object.keys(catalog)});
-  renderer.setWorld(game.map);mode='playing';
+  renderer.setWorld(game.map);mode='playing';needsRender=true;
   for(const id of ['title-screen','title-depth','title-footer'])hide(id);
   show('hud');show('pause');document.body.classList.add('playing');closeModal();
   setMapExpanded(!mobile());saveDive();updateHUD();
@@ -179,11 +182,11 @@ function pause() {
     <p>潜航を止めています。酸素も減らないので、ごゆっくり。</p>
     <div class="modal-actions">
       <button class="primary" id="resume">${icon('play')}潜航を続ける</button>
-      <button class="secondary" id="warp-menu">ワープ</button><button class="secondary" id="market-menu">浅瀬の商人</button><button class="secondary" id="transfer-menu">データ引継ぎ</button><button class="secondary" id="pause-journal">図鑑・海図</button><button class="secondary" id="pause-help">あそびかた</button>
+      <button class="secondary" id="warp-menu">ワープ</button><button class="secondary" id="market-menu">浅瀬の商人</button><button class="secondary" id="transfer-menu">データ引継ぎ</button><button class="secondary" id="logbook-menu">航海記録・収集品</button><button class="secondary" id="install-menu">ホーム画面に追加</button>${waitingWorker?'<button class="secondary" id="update-app">更新版を読み込む</button>':''}<button class="secondary" id="pause-journal">図鑑・海図</button><button class="secondary" id="pause-help">あそびかた</button>
       <button class="secondary" id="pause-fullscreen">全画面</button><button class="secondary" id="pause-sound">サウンド切替</button>
       <button class="text-button" id="abandon">タイトルへ戻る</button>
     </div>`, resume);
-  $('resume').onclick = resume;$('warp-menu').onclick=warpMenu;$('market-menu').onclick=market;$('transfer-menu').onclick=()=>transferMenu('playing');
+  $('resume').onclick = resume;$('logbook-menu').onclick=()=>logbook();$('install-menu').onclick=installGame;if($('update-app'))$('update-app').onclick=()=>{saveDive();waitingWorker.postMessage({type:'ACTIVATE'});};$('warp-menu').onclick=warpMenu;$('market-menu').onclick=market;$('transfer-menu').onclick=()=>transferMenu('playing');
   $('pause-fullscreen').onclick = enterFullscreen;
   $('pause-sound').onclick=()=>{audio.init();audio.toggle();updateSound();save('null-tide-sound',audio.enabled);text('pause-sound',audio.enabled?'サウンド：あり':'サウンド：なし');};
   $('pause-journal').onclick = () => journal('paused');
@@ -198,12 +201,11 @@ function resume() {
 
 function toTitle() {
   mode = 'title';
-  game = new Expedition(271828,{known:Object.keys(catalog)});
-  renderer.setWorld(game.map);
+  game = new Expedition(271828,{...checkpoint,sector:0,known:Object.keys(catalog)});
   for (const id of ['title-screen', 'title-depth', 'title-footer']) show(id);
   hide('hud');
   hide('pause');
-  hide('toast');
+  hide('toast');hide('catch-card');
   document.body.classList.remove('playing');
   updateBest();
   clearInput();
@@ -237,7 +239,7 @@ function journal(returnTo=mode,showChart=false) {
   const known=Object.keys(catalog).length,benefit=depthBenefits(game.maxSector);
   openModal(`<div class="micro">海洋調査ノート · 記録は自動保存</div><h2 id="modal-title">世界の魚、${SPECIES.length.toLocaleString()} 種。</h2>
     <p>${sectorInfo(game.sector).name} · 水深 ${sectorInfo(game.sector).depth.toLocaleString()} m · 潮流鍵 ${game.map.cores.filter(k=>k.done).length}/3（1つで開放）<br>開拓ボーナス：酸素 ${benefit.oxygen}秒 / 捕獲速度 ×${benefit.capture.toFixed(2)} / この深度の報酬 ×${depthBenefits(game.sector).reward.toFixed(2)}</p>
-    <div class="journal-tabs" role="tablist"><button id="codex-tab" role="tab" aria-selected="true">魚図鑑 ${known.toLocaleString()} / ${SPECIES.length.toLocaleString()}</button><button id="chart-tab" role="tab" aria-selected="false">海図・潮流鍵</button></div>
+    <div class="journal-tabs" role="tablist"><button id="codex-tab" role="tab" aria-selected="true">魚図鑑 ${known.toLocaleString()} / ${SPECIES.length.toLocaleString()}</button><button id="chart-tab" role="tab" aria-selected="false">海図・潮流鍵</button><button id="journal-logbook">航海記録</button></div>
     <div id="codex-panel" role="tabpanel"><div class="catalog-filters"><input id="fish-search" type="search" placeholder="和名・学名・科名で検索" aria-label="魚の名前を検索"><select id="fish-filter" aria-label="図鑑の表示"><option value="all">すべて</option><option value="known">捕獲済み</option><option value="unknown">未捕獲</option><option value="depth">この深度で出会える魚</option></select></div><p id="catalog-results"></p><div id="catalog-grid" class="codex-grid"></div><div class="catalog-pages"><button id="fish-prev" class="secondary">前の24種</button><span id="fish-page"></span><button id="fish-next" class="secondary">次の24種</button></div><p>実在する魚の和名・学名を収録。出現深度・色・大きさはゲーム用の表現です。図鑑の全種類を、魚群を更新しながら捕獲できます。</p><a href="https://www.gbif.org/dataset/6b6b2923-0a10-4708-b170-5b7c611aceef" target="_blank" rel="noreferrer">名称データ：ENA taxonomy / GBIF ↗</a></div>
     <div id="chart-panel" class="hidden" role="tabpanel"><p class="chart-legend">水色：潮流鍵（1つで開放） / 紫：古代神殿 / 黄：潜降 / 青：上昇 / □：補給</p><p class="chart-explanation">鍵1つ、または神殿の謎解きで次へ。上昇は自由です。集めた鍵と海図は再訪しても残ります。補給ブイで魚群を更新すると、未捕獲の魚を優先して探せます。</p><canvas id="large-chart" width="738" height="534" aria-label="潮流鍵と上下の移動口を示す海図"></canvas></div>
     <div class="modal-actions"><button class="primary" id="close-journal">${returnTo==='title'?'タイトルへ':'探索を続ける'}</button></div>`,leave);
@@ -245,24 +247,27 @@ function journal(returnTo=mode,showChart=false) {
   const draw=()=>{const q=$('fish-search').value.trim().toLowerCase(),filter=$('fish-filter').value,depth=sectorInfo(game.sector).depth;
     const list=SPECIES.map((f,i)=>({f,i})).filter(({f})=>(!q||`${f.name} ${f.scientific} ${f.family}`.toLowerCase().includes(q))&&(filter!=='known'||catalog[f.id])&&(filter!=='unknown'||!catalog[f.id])&&(filter!=='depth'||(f.minDepth<=depth&&depth<=f.maxDepth)));
     page=Math.max(0,Math.min(page,Math.ceil(list.length/24)-1));text('catalog-results',`${list.length.toLocaleString()} 種 · 捕獲済み ${known.toLocaleString()} 種`);text('fish-page',`${page+1} / ${Math.max(1,Math.ceil(list.length/24))}`);$('fish-prev').disabled=page===0;$('fish-next').disabled=(page+1)*24>=list.length;
-    $('catalog-grid').innerHTML=list.slice(page*24,page*24+24).map(({f,i})=>`<article class="specimen ${catalog[f.id]?'known':'unknown'}"><div class="specimen-art">${fishSVG(i)}</div><small>No.${String(i+1).padStart(4,'0')} · ${catalog[f.id]?'捕獲済み':'未捕獲'}</small><h3>${f.name}</h3><p><i>${f.scientific}</i><br>${f.family}<br>${f.rarity} · 基準重量 ${f.baseGrams.toLocaleString()} g<br>固有価値 ${f.intrinsic} G/kg</p><b>出現深度（ゲーム） ${f.minDepth.toLocaleString()} m〜${Number.isFinite(f.maxDepth)?f.maxDepth.toLocaleString()+' m':''}</b></article>`).join('')||'<p>該当する魚がいません。</p>';
+    $('catalog-grid').innerHTML=list.slice(page*24,page*24+24).map(({f,i})=>`<article class="specimen ${catalog[f.id]?'known':'unknown'}"><div class="specimen-art">${fishSVG(i)}</div><small>No.${String(i+1).padStart(4,'0')} · ${catalog[f.id]?'捕獲済み':'未捕獲'}</small><h3>${f.name}</h3><p><i>${f.scientific}</i><br>${f.family}<br>${'★'.repeat(f.rank)} ${f.rarity} · ゲーム基準重量 ${f.baseGrams.toLocaleString()} g<br>固有価値 ${f.intrinsic} G/kg${game.records[f.id]?`<br><strong>自己記録 ${game.records[f.id].grams.toLocaleString()} g</strong><br>採集 ${game.records[f.id].count.toLocaleString()} 匹`:''}</p><b>出現深度（ゲーム） ${f.minDepth.toLocaleString()} m〜${Number.isFinite(f.maxDepth)?f.maxDepth.toLocaleString()+' m':''}</b></article>`).join('')||'<p>該当する魚がいません。</p>';
   };
   $('fish-search').oninput=$('fish-filter').onchange=()=>{page=0;draw();};$('fish-prev').onclick=()=>{page--;draw();};$('fish-next').onclick=()=>{page++;draw();};draw();
   const tab=chart=>{$('modal-content').classList.toggle('chart-view',chart);$('codex-panel').classList.toggle('hidden',chart);$('chart-panel').classList.toggle('hidden',!chart);$('codex-tab').setAttribute('aria-selected',String(!chart));$('chart-tab').setAttribute('aria-selected',String(chart));if(chart)renderer.minimap($('large-chart'),game);};
-  $('codex-tab').onclick=()=>tab(false);$('chart-tab').onclick=()=>tab(true);$('close-journal').onclick=leave;tab(showChart);
+  $('journal-logbook').onclick=()=>logbook(returnTo);$('codex-tab').onclick=()=>tab(false);$('chart-tab').onclick=()=>tab(true);$('close-journal').onclick=leave;tab(showChart);
 }
 
-function warpMenu(){
- const leave=()=>{closeModal();mode='playing';};mode='paused';
- openModal(`<div class="micro">開拓した海へ</div><h2 id="modal-title">ワープ航路</h2><p>開拓済みの深度へ自由に移動できます。鍵・海図は保持します。</p><div class="warp-list">${Array.from({length:Math.min(101,game.maxSector+1)},(_,i)=>`<button class="secondary" data-warp="${i}" ${i===game.sector?'disabled':''}>${sectorInfo(i).depth.toLocaleString()} m ${i===0?'· 浅瀬の商人':''}</button>`).join('')}</div>`,leave);
- for(const b of document.querySelectorAll('[data-warp]'))b.onclick=()=>{game.warp(Number(b.dataset.warp));renderer.setWorld(game.map);leave();saveDive();updateHUD();notify('ワープ完了');};
+function warpMenu(onArrive=null){
+ const leave=()=>{closeModal();mode='playing';};mode='paused';let page=Math.floor(game.sector/24);
+ openModal(`<div class="micro">開拓した海へ · 無料</div><h2 id="modal-title">ワープ航路</h2><p>一度到達した深度へ、鍵を集め直さず戻れます。</p><button class="primary" id="warp-home">200 m · 浅瀬のゲンさんへ</button><div id="warp-destinations" class="warp-list"></div><div class="catalog-pages"><button id="warp-prev" class="secondary">前の航路</button><span id="warp-page"></span><button id="warp-next" class="secondary">次の航路</button></div>`,leave);
+ const go=level=>{game.warp(level);renderer.setWorld(game.map);leave();saveDive();updateHUD();notify('ワープ完了');if(typeof onArrive==='function'&&level===0)onArrive();};
+ const draw=()=>{const pages=Math.ceil((game.maxSector+1)/24);page=Math.max(0,Math.min(page,pages-1));text('warp-page',`${page+1} / ${pages}`);$('warp-prev').disabled=page===0;$('warp-next').disabled=page===pages-1;$('warp-destinations').innerHTML=Array.from({length:Math.min(24,game.maxSector+1-page*24)},(_,n)=>{const i=page*24+n;return `<button class="secondary" data-warp="${i}" ${i===game.sector?'disabled':''}>${sectorInfo(i).depth.toLocaleString()} m</button>`;}).join('');for(const b of document.querySelectorAll('[data-warp]'))b.onclick=()=>go(Number(b.dataset.warp));};
+ $('warp-home').onclick=()=>go(0);$('warp-prev').onclick=()=>{page--;draw();};$('warp-next').onclick=()=>{page++;draw();};draw();
 }
+
 function market(){
- if(game.sector!==0||dist(game.player,game.map.hub)>120){warpMenu();return;}
+ if(game.sector!==0||dist(game.player,game.map.hub)>120){warpMenu(market);return;}
  mode='paused';const leave=()=>{closeModal();mode='playing';};
  const total=game.bag.reduce((n,v)=>n+v.price,0);
- openModal(`<div class="micro">浅瀬の桟橋 · 船大工ゲンさん</div><h2 id="modal-title">「いい獲物、揚がったかい？」</h2><p>所持金 ${game.coins.toLocaleString()} G · 積み荷 ${game.bag.length}匹 · 査定 ${total.toLocaleString()} G<br>重さと固有価値、希少度が高い獲物ほど高く買い取るよ。</p><button class="primary" id="sell-bag" ${total?'':'disabled'}>積み荷をまとめて売る</button><div class="upgrades">${[['engine','エンジン','移動速度 +10%'],['tank','酸素タンク','容量 +30秒'],['net','捕獲ネット','捕獲速度 +15%']].map(([id,name,note])=>`<button class="upgrade" data-buy="${id}" ${(game.shopLevels[id]||0)>=5||game.coins<300*2**(game.shopLevels[id]||0)?'disabled':''}><strong>${name}</strong><p>Lv.${game.shopLevels[id]||0}/5 · ${note}</p><small>${300*2**(game.shopLevels[id]||0)} G</small></button>`).join('')}</div><p>${game.bag.slice(-8).map(v=>`${v.name} · ${v.grams.toLocaleString()} g · ${v.price.toLocaleString()} G`).join('<br>')||'捕まえた生き物をここへ持ち帰ろう。'}</p>`,leave);
- $('sell-bag').onclick=()=>{game.sell();saveDive();market();};for(const b of document.querySelectorAll('[data-buy]'))b.onclick=()=>{game.buy(b.dataset.buy);saveDive();market();};
+ openModal(`<div class="micro">浅瀬の桟橋 · 船大工ゲンさん</div><div class="merchant-heading"><img src="assets/gen.svg" alt="船大工ゲンさん"><h2 id="modal-title">「いい獲物、揚がったかい？」</h2></div><p>所持金 ${game.coins.toLocaleString()} G · 積み荷 ${game.bag.length}点 · 査定 ${total.toLocaleString()} G<br>重さと固有価値、希少度が高い獲物ほど高く買い取るよ。</p><button class="primary" id="sell-bag" ${total?'':'disabled'}>積み荷をまとめて売る</button><p id="market-status" aria-live="polite"></p><div class="upgrades">${[['engine','エンジン','移動速度 +10%'],['tank','酸素タンク','容量 +30秒'],['net','捕獲ネット','捕獲速度 +15%']].map(([id,name,note])=>`<button class="upgrade" data-buy="${id}" ${(game.shopLevels[id]||0)>=5||game.coins<300*2**(game.shopLevels[id]||0)?'disabled':''}><strong>${name}</strong><p>Lv.${game.shopLevels[id]||0}/5 · ${note}</p><small>${(game.shopLevels[id]||0)>=5?'強化完了':`${(300*2**(game.shopLevels[id]||0)).toLocaleString()} G`}</small></button>`).join('')}</div><p>${game.bag.slice(-8).map(v=>`${v.name} · ${v.grams.toLocaleString()} g · ${v.price.toLocaleString()} G`).join('<br>')||'捕まえた生き物をここへ持ち帰ろう。'}</p>`,leave);
+ $('sell-bag').onclick=()=>{const sold=game.sell();saveDive();market();text('market-status',`${sold.toLocaleString()} Gで買い取りました。装備を選んで強化できます。`);};for(const b of document.querySelectorAll('[data-buy]'))b.onclick=()=>{const bought=game.buy(b.dataset.buy);saveDive();market();if(bought)text('market-status','強化が完了しました。次の探索から活躍するよ。');};
 }
 function ruinPuzzle(){
  mode='paused';holding=false;const leave=()=>{closeModal();mode='playing';};const symbols=['☀ 太陽','☾ 月','≈ 波'],order=game.map.puzzle;
@@ -274,10 +279,50 @@ function ruinPuzzle(){
 function transferMenu(returnTo=mode){
  if(mode==='playing')mode='paused';const leave=()=>{closeModal();mode=returnTo==='title'?'title':'playing';};
  openModal(`<div class="micro">署名付きセーブコード</div><h2 id="modal-title">別の端末へ引き継ぐ</h2><p>コードを保存し、別の端末のこの画面へ貼り付けます。コードの書き換えはサーバー署名で検出します。コードを知る人は記録を復元できます。</p><textarea id="save-code" aria-label="引継ぎコード" rows="5" spellcheck="false"></textarea><p id="transfer-status"></p><div class="modal-actions"><button class="primary" id="export-save">コードを作る</button><button class="secondary" id="copy-save">コピー</button><button class="secondary" id="import-save">検証して引き継ぐ</button></div>`,leave);
- const call=async body=>{const r=await fetch('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'引継ぎに失敗');return d;};
+ const call=async body=>{if(!navigator.onLine)throw Error('通信に接続してから引継ぎコードを作成・検証してください。');const r=await fetch('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'引継ぎに失敗');return d;};
  $('export-save').onclick=async()=>{try{const source=returnTo==='title'?checkpoint:game.snapshot();if(!source)throw Error('先に潜航を始めてください。');const d=await call({action:'export',state:{v:1,dive:source,catalog}});$('save-code').value=d.code;text('transfer-status','コードを作成しました。安全な場所へ保存してください。');}catch(e){text('transfer-status',e.message);}};
  $('copy-save').onclick=async()=>{try{await navigator.clipboard.writeText($('save-code').value);text('transfer-status','コピーしました。');}catch{$('save-code').select();text('transfer-status','コードを選択しました。コピーしてください。');}};
- $('import-save').onclick=async()=>{try{const d=await call({action:'import',code:$('save-code').value.trim()});checkpoint=d.state.dive;catalog=d.state.catalog;save('null-tide-dive-v4',checkpoint);save('null-tide-real-catalog-v4',catalog);leave();start();notify('引継ぎが完了しました');}catch(e){text('transfer-status',e.message);}};
+ $('import-save').onclick=async()=>{try{const d=await call({action:'import',code:$('save-code').value.trim()});checkpoint=d.state.dive;catalog=Object.fromEntries(SPECIES.filter(f=>Number.isSafeInteger(d.state.catalog?.[f.id])&&d.state.catalog[f.id]>0).map(f=>[f.id,d.state.catalog[f.id]]));try{writeDive(localStorage,checkpoint);}catch{}save('null-tide-real-catalog-v4',catalog);leave();start();notify('引継ぎが完了しました');}catch(e){text('transfer-status',e.message);}};
+}
+
+function catchCard(event,first){
+ const f=SPECIES[event.species];
+ $('catch-art').innerHTML=fishSVG(event.species);$('catch-card').dataset.rank=f.rank;
+ text('catch-kicker',first?'NEW SPECIES · 図鑑に登録':event.record?'PERSONAL BEST · 自己記録':'FIELD NOTES · 採集成功');
+ text('catch-name',f.name);text('catch-details',`${'★'.repeat(f.rank)} · ${event.grams.toLocaleString()} g · ${event.price.toLocaleString()} G`);
+ show('catch-card');catchTimer=first||f.rank>=4?5:3.5;
+ if(first||f.rank>=4)audio.play('discovery');
+}
+
+function logbook(returnTo='playing'){
+ const source=returnTo==='title'&&checkpoint?new Expedition(checkpoint.seed,{...checkpoint,known:Object.keys(catalog)}):game;
+ if(mode==='playing')mode='paused';
+ const leave=()=>{closeModal();mode=returnTo==='title'?'title':'playing';};
+ const count=Object.keys(catalog).length,next=MILESTONES.find(m=>count<m.count),relicCount=Object.keys(source.relicRecords).length;
+ openModal(`<div class="micro">NULL TIDE · 自分だけの航海記録</div><h2 id="modal-title">${collectionRank(count)}</h2>
+ <div class="voyage-summary"><div><small>魚図鑑</small><strong>${count}<span> / ${SPECIES.length}</span></strong></div><div><small>最深到達</small><strong>${Math.max(deepest,sectorInfo(source.maxSector).depth).toLocaleString()}<span> m</span></strong></div><div><small>発見品</small><strong>${relicCount}<span> / ${RELICS.length}</span></strong></div></div>
+ <div class="collection-track"><i style="width:${count/SPECIES.length*100}%"></i></div><p>${next?`次は${next.count}種で「${next.title}」 · 研究助成金 ${next.coins.toLocaleString()} G`:'全種の記録を達成しました。大洋のその先へ。'}</p>
+ <div class="modal-actions"><button class="primary" id="share-record">航海の記録をシェア</button><button class="secondary" id="view-specimens">魚図鑑へ</button></div><p id="share-status" aria-live="polite"></p>
+ <h3 class="section-caption">図鑑の達成報酬</h3><div class="milestones">${MILESTONES.map(m=>`<div class="milestone ${count>=m.count?'earned':''}"><span>${count>=m.count?'✓':'○'} ${m.count}種 · ${m.title}</span><b>${m.coins.toLocaleString()} G</b>${count>=m.count&&!source.claimedMilestones.includes(m.count)?`<button class="secondary" data-claim="${m.count}">受け取る</button>`:''}</div>`).join('')}</div>
+ <h3 class="section-caption">海が残したもの · 発見品 ${relicCount}/${RELICS.length}</h3><p>沈船・調査地点から回収。売っても発見記録は残ります。深い海で新しい品が見つかります。</p><div class="relic-grid">${RELICS.map((r,i)=>`<article class="relic ${source.relicRecords[r.id]?'found':''}"><div>${relicSVG(r)}</div><small>${'★'.repeat(r.rank)} · ${sectorInfo(Math.floor(i/2)*4).name}</small><h3>${source.relicRecords[r.id]?r.name:'未発見の記憶'}</h3><p>${source.relicRecords[r.id]?r.note:'この海域の沈船や調査地点を探そう。'}</p></article>`).join('')}</div>`,leave);
+ $('modal-content').classList.add('logbook-sheet');
+ $('view-specimens').onclick=()=>journal(returnTo);
+ for(const b of document.querySelectorAll('[data-claim]'))b.onclick=()=>{source.claimCollection(Number(b.dataset.claim));if(returnTo==='title'){checkpoint=source.snapshot();try{writeDive(localStorage,checkpoint);}catch{}}else saveDive();logbook(returnTo);};
+ $('share-record').onclick=async()=>{const data={title:'深層の記録 — NULL TIDE',text:`「深層の記録」で魚図鑑 ${count}/${SPECIES.length}種、最深 ${Math.max(deepest,sectorInfo(source.maxSector).depth).toLocaleString()} mへ。${collectionRank(count)}として、次の海を探索中。`,url:'https://knutkning.vercel.app/'};try{if(navigator.share)await navigator.share(data);else{await navigator.clipboard.writeText(`${data.text}\n${data.url}`);text('share-status','記録とゲームのURLをコピーしました。');}}catch(e){if(e.name!=='AbortError')text('share-status','共有できませんでした。ゲームのURLをコピーして紹介できます。');}};
+}
+
+async function installGame(){
+ if(installPrompt){const prompt=installPrompt;installPrompt=null;await prompt.prompt();return;}
+ const leave=()=>{closeModal();mode='playing';};
+ openModal(`<div class="micro">いつでも、この海へ</div><h2 id="modal-title">ホーム画面から遊ぶ</h2><p>スマホのブラウザーのメニューから「ホーム画面に追加」または「アプリをインストール」を選べます。</p><p>${offlineReady?'オフライン起動の準備が完了しています。通信がなくても探索できます。':window.isSecureContext&&'serviceWorker' in navigator?'オフライン用データを準備しています。通信したまま少し待ち、次の起動からご利用ください。':'このブラウザーではオンラインで遊べます。対応ブラウザーで公開版を開くと、オフライン起動の準備ができます。'}データ引継ぎコードの作成・検証には通信が必要です。保存はこの端末のブラウザー内に残ります。</p><button class="primary" id="close-install">探索に戻る</button>`,leave);
+ $('close-install').onclick=leave;
+}
+
+window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;});
+window.addEventListener('pagehide',()=>{if(mode!=='title')saveDive();});
+if('serviceWorker' in navigator&&window.top===window.self&&!['terminal.local','localhost','127.0.0.1'].includes(location.hostname)){
+ navigator.serviceWorker.register('/sw.js').then(reg=>{navigator.serviceWorker.ready.then(()=>{offlineReady=true;});waitingWorker=reg.waiting;reg.addEventListener('updatefound',()=>{const worker=reg.installing;worker?.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller){waitingWorker=worker;notify('新しい航海の準備ができました','メニューから更新版を読み込めます。',6);}});});}).catch(()=>{});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(waitingWorker){waitingWorker=null;location.reload();}});
 }
 
 function credits() {
@@ -343,8 +388,9 @@ function processEvents() {
       netArmed=false;
       const species=SPECIES[event.species],first=!catalog[species.id];catalog[species.id]=(Number(catalog[species.id])||0)+1;save('null-tide-real-catalog-v4',catalog);saveDive();
       renderer.burst(event.x,event.y,species.color,25);
-      notify(`${first?'新種を図鑑に登録！ ':''}${species.name}を捕獲`, `重さ ${event.grams?.toLocaleString()} g · 査定 ${event.price?.toLocaleString()} G · ${species.rarity}`,3);
+      catchCard(event,first);for(const m of MILESTONES)if(game.claimCollection(m.count))saveDive();
     }
+    if(event.type==='milestone'){saveDive();notify(`図鑑 ${event.count}種達成 · ${event.title}`,`研究助成金 +${event.coins.toLocaleString()} G。浅瀬で潜水艇を強化しよう。`,6);}
     if(event.type==='research')notify('生態調査の依頼を達成！','+650 pt · 餌+2 · 酸素+40秒',4);
     if(event.type==='collection-complete')completed=true;
     if(event.type==='ruin')ruinPuzzle();
@@ -352,7 +398,8 @@ function processEvents() {
     if(event.type==='school'){holding=false;notify('新しい魚群を発見','未捕獲の魚を優先して探せます');saveDive();}
     if(event.type==='locked'){holding=false;notify('潜降口は閉じています','潮流鍵を1つ回収、または神殿の謎を解こう。金色の点線が鍵まで案内します。');}
     if(event.type==='site')holding=false;
-    if(event.type==='site')notify(event.kind==='wreck'?'沈船から物資を回収しました':'生態調査ポイントを記録しました',event.kind==='wreck'?'+350 pt · 餌+2 · 酸素+40秒 · 耐久+1':'+450 pt · 餌+2 · 酸素+40秒 · 周辺の海図を更新',4);
+    if(event.type==='site'&&event.relic){saveDive();const relic=RELICS.find(r=>r.id===event.relic);notify(`発見品：${relic.name}`,'航海記録に登録しました。積み荷は浅瀬で売却できます。',5);}
+    if(event.type==='site'&&!event.relic)notify(event.kind==='wreck'?'沈船から物資を回収しました':'生態調査ポイントを記録しました',event.kind==='wreck'?'+350 pt · 餌+2 · 酸素+40秒 · 耐久+1':'+450 pt · 餌+2 · 酸素+40秒 · 周辺の海図を更新',4);
     if(event.type==='discovery')notify(`発見：${event.name}`,'新たな探索地点を海図に記録 · +100 pt',2.5);
     if (event.type === 'air') notify('酸素を補給しました', '+36秒。もう少し探索できます。', 2);
     if (event.type === 'hit') {
@@ -409,8 +456,10 @@ function updateHUD() {
     hide('interact');
     holding = false;
   }
-  const target=game.objectiveTarget();
-  const nextLabel=game.unlocked()?'潜降口へ戻ろう':'潮流鍵を1つ探そう';
+  renderer.netArmed=netArmed;
+  const firstFish=game.discovered.size===0?game.closestFish():null;
+  const target=firstFish||game.objectiveTarget();
+  const nextLabel=firstFish?'捕獲を押して、最初の1匹':game.unlocked()?'潜降口へ戻ろう':'潮流鍵を1つ探そう';
   const angle=Math.atan2(target.y-p.y,target.x-p.x);
   const arrow=['→','↘','↓','↙','←','↖','↑','↗'][(Math.round(angle/(Math.PI/4))+8)%8];
   text('route-goal',`${arrow} 次へ：${nextLabel}`);
@@ -432,7 +481,7 @@ $('fullscreen').onclick=enterFullscreen;
 $('rotate-fullscreen').onclick=enterFullscreen;
 $('journal').onclick = () => journal();
 $('survey-progress').onclick = () => journal();
-$('title-help').onclick = () => help('title');$('title-transfer').onclick=()=>transferMenu('title');
+$('title-logbook').onclick=()=>logbook('title');$('catch-card').onclick=()=>{hide('catch-card');journal();};$('title-help').onclick = () => help('title');$('title-transfer').onclick=()=>transferMenu('title');
 $('help').onclick = () => { if (['title', 'playing', 'paused'].includes(mode)) help(); };
 $('credits').onclick = credits;
 $('sound').onclick = () => {
@@ -494,10 +543,10 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => keys.delete(e.code));
 window.addEventListener('blur', () => { clearInput(); if (mode === 'playing') pause(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { clearInput(); if (mode === 'playing') pause(); }
+  if (document.hidden) { if(mode!=='title')saveDive();clearInput(); if (mode === 'playing') pause(); }
 });
-window.addEventListener('resize',()=>{renderer.resize();syncViewport();thumbStick.relayout();});
-document.addEventListener('fullscreenchange',()=>{renderer.resize();syncViewport();});
+window.addEventListener('resize',()=>{needsRender=true;renderer.resize();syncViewport();thumbStick.relayout();});
+document.addEventListener('fullscreenchange',()=>{needsRender=true;renderer.resize();syncViewport();});
 
 function frame(ms) {
   const dt = Math.min(0.05, (ms - previous) / 1000 || 0);
@@ -514,7 +563,7 @@ function frame(ms) {
       game.tick(1 / 60, input());
       accumulator -= 1 / 60;
     }
-    processEvents();
+    processEvents();autosaveTimer+=dt;if(autosaveTimer>=15){saveDive();autosaveTimer=0;}
     hudTime += dt;
     if (hudTime > 0.1) { updateHUD(); hudTime = 0; }
   } else accumulator = 0;
@@ -522,8 +571,9 @@ function frame(ms) {
     toastTimer -= dt;
     if (toastTimer <= 0) hide('toast');
   }
-  // The title uses its own illustrated cover; don't repaint an obscured world.
-  if (mode !== 'title') renderer.render(game, ms / 1000, dt);
+  if(catchTimer>0){catchTimer-=dt;if(catchTimer<=0)hide('catch-card');}
+  // Menus retain a still frame instead of repainting a full-resolution scene behind blur.
+  if(mode==='playing'&&!portrait()||needsRender&&mode!=='title'){renderer.render(game,ms/1000,dt);needsRender=false;}
   requestAnimationFrame(frame);
 }
 syncViewport();

@@ -6,9 +6,10 @@
   <meta name="theme-color" content="#0a2b37">
   <title>深層の記録 — NULL TIDE</title>
   <meta name="description" content="深海へ潜り続け、実在の魚320種類の魚図鑑を完成させよう。タップで捕獲する海底探索ゲーム。スマホは横向きで遊べます。">
+  <link rel="apple-touch-icon" href="assets/app-icon-192.png"><link rel="manifest" href="manifest.webmanifest"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="mobile-web-app-capable" content="yes">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preload" href="assets/cover.svg" as="image">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="polish.css">
 </head>
 <body>
   <canvas id="ocean" aria-label="深海の魚図鑑ゲームの画面"></canvas>
@@ -32,7 +33,7 @@
     <p class="intro">潜るほど、まだ見ぬ魚に出会える。<br>320種を集めて、深海の図鑑を完成させよう。</p>
     <div class="start-actions">
       <button id="start" class="primary"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#play"></use></svg><span id="start-label">潜りはじめる</span><kbd>Enter</kbd></button>
-      <button id="fresh-start" class="title-help hidden">浅瀬から</button><button id="title-transfer" class="title-help">引継ぎ</button><button id="title-help" class="title-help">あそびかた<span aria-hidden="true">↗</span></button>
+      <button id="fresh-start" class="title-help hidden">浅瀬から</button><button id="title-logbook" class="title-help">航海記録</button><button id="title-transfer" class="title-help">引継ぎ</button><button id="title-help" class="title-help">あそびかた<span aria-hidden="true">↗</span></button>
     </div>
     <p class="session-note">スマホは横向き <span>·</span> 実在の魚320種 <span>·</span> 進行を自動保存</p>
     <p id="best-title" class="best-title"></p>
@@ -76,6 +77,7 @@
     <div id="movement-zone" aria-label="左側をドラッグして移動"><div id="joystick" aria-label="ドラッグして移動"><div id="joystick-knob"></div><span>移動</span></div></div>
     <div class="movement-hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>移動</span></div>
   </section>
+  <button id="catch-card" class="catch-card hidden" aria-label="採集した魚の図鑑を開く"><span id="catch-art" class="catch-art"></span><span class="catch-copy"><small id="catch-kicker"></small><strong id="catch-name"></strong><span id="catch-details"></span></span></button>
   <div id="toast" role="status" class="toast hidden"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sub"></use></svg><div><span id="toast-title"></span><small id="toast-body"></small></div></div>
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div id="modal-content" class="modal-content"></div></div>
   <section id="rotate-screen" class="rotate-screen" aria-label="横向きで遊んでください"><svg viewBox="0 0 120 100" aria-hidden="true"><rect x="25" y="31" width="70" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><path d="M85 15a39 39 0 0 0-58 0m0 0 2-14m-2 14 14-2" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="86" cy="51" r="2" fill="currentColor"/></svg><h2>スマホを横にしてね</h2><p>左手で移動、右手で魚を捕獲。<br>縦向きの間はゲームを停止しています。</p><button id="rotate-fullscreen" class="primary">全画面で遊ぶ</button><small>自動で切り替わらない場合は、端末を横にしてください。</small></section>

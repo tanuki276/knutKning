@@ -1,0 +1,5 @@
+export function readJSON(storage,key,fallback=null){try{return JSON.parse(storage.getItem(key))??fallback;}catch{return fallback;}}
+export function writeJSON(storage,key,value){try{storage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
+export function validDive(d){return !!d&&d.version===4&&Number.isSafeInteger(d.seed)&&Number.isSafeInteger(d.sector)&&d.sector>=0&&d.sector<=1000000;}
+export function readDive(storage){const current=readJSON(storage,'null-tide-dive-v4');if(validDive(current))return current;const backup=readJSON(storage,'null-tide-dive-backup-v4');if(validDive(backup))return backup;const old=readJSON(storage,'null-tide-dive-v3');return old?.version===3&&Number.isSafeInteger(old.seed)&&Number.isSafeInteger(old.sector)?{...old,version:4,maxSector:old.sector,catches:[],floors:{},cycles:{}}:null;}
+export function writeDive(storage,dive){if(!validDive(dive))return false;const current=readJSON(storage,'null-tide-dive-v4');if(validDive(current))writeJSON(storage,'null-tide-dive-backup-v4',current);return writeJSON(storage,'null-tide-dive-v4',dive);}
