@@ -19,10 +19,10 @@ test('diagonal movement is normalized, walls block fast movement',()=>{const str
 test('sonar cooldown, expanding wave, and sound attracts enemies',()=>{const g=new Expedition(1),e=g.map.enemies[0];e.x=g.player.x+200;e.y=g.player.y;assert.equal(g.pulse(),true);assert.equal(e.alert,7);assert.equal(g.pulse(),false);frames(g,60);assert.ok(g.pulses[0].r>350);frames(g,240);assert.equal(g.pulse(),true);assert.equal(g.pings,2);});
 test('dash stuns guardians, prevents damage, and obeys cooldown',()=>{const g=new Expedition(1),p=g.player,e=g.map.enemies[0];p.invincible=0;e.x=p.x+20;e.y=p.y;assert.equal(g.dash(1,0),true);assert.ok(e.stun>0);assert.equal(g.dash(1,0),false);frames(g,10,{x:1});assert.equal(p.hp,4);frames(g,145);assert.equal(g.dash(1,0),true);});
 test('damage has invulnerability window and oxygen expiry ends expedition',()=>{const g=new Expedition(1),p=g.player,e=g.map.enemies[0];p.invincible=0;e.x=p.x;e.y=p.y;g.tick(1/60);assert.equal(p.hp,3);frames(g,20);assert.equal(p.hp,3);p.x+=100;p.oxygen=.001;g.tick(1/60);assert.equal(g.state,'lost');});
-test('holding outside an archive cannot recover it; progress decays after release',()=>{const g=new Expedition(1);g.map.enemies=[];frames(g,120,{interact:true});assert.equal(g.recovered,0);const c=g.map.cores[0];g.player.x=c.x;g.player.y=c.y;frames(g,45,{interact:true});assert.ok(c.progress>.4&&c.progress<1);frames(g,60);assert.ok(c.progress<.2);});
-test('twenty-five successive descents need no archive collection and never force an ending',()=>{
+test('holding outside an archive cannot recover it; progress decays after release',()=>{const g=new Expedition(1);g.map.enemies=[];frames(g,120,{interact:true});assert.equal(g.recovered,0);frames(g,1);const c=g.map.cores[0];g.player.x=c.x;g.player.y=c.y;frames(g,45,{interact:true});assert.ok(c.progress>.4&&c.progress<1);frames(g,60);assert.ok(c.progress<.2);});
+test('twenty-five successive keyed descents remain navigable and never force an ending',()=>{
   const g=new Expedition(8675309);for(let level=0;level<25;level++){
-    g.map.enemies=[];navigate(g,g.map.descent);frames(g,30,{interact:true});assert.equal(g.state,'upgrade');assert.equal(g.recovered,0);
+    g.map.enemies=[];for(const key of g.map.cores){navigate(g,key);frames(g,100,{interact:true});assert.ok(key.done);}g.solve(g.map.puzzle);navigate(g,g.map.descent);frames(g,30,{interact:true});assert.equal(g.state,'upgrade');assert.equal(g.recovered,(level+1)*3);
     g.upgrade(level%2?'oxygen':'engine');assert.equal(g.sector,level+1);assert.equal(g.state,'playing');assert.equal(g.player.hp,g.maxHp);assert.equal(g.player.oxygen,g.maxOxygen);
     assert.equal(sectorInfo(g.sector).depth,200+(level+1)*300);
   }assert.ok(g.speed<=1.8);assert.ok(g.oxygenRate>=.4);

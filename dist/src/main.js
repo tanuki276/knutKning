@@ -1,4 +1,4 @@
-import { Expedition, sectorInfo, availableSpecies, dist } from './world.js';
+import { Expedition, sectorInfo, availableSpecies, depthBenefits, dist } from './world.js';
 import { SPECIES, fishSVG } from './species.js';
 import { Renderer } from './render.js';
 import { bindGameAction, bindThumbStick, portraitViewport } from './controls.js';
@@ -23,12 +23,13 @@ const save = (key, value) => {
 const renderer = new Renderer($('ocean'));
 const audio = new AudioEngine();
 let best = read('null-tide-best', 0);
-let catalog = read('null-tide-catalog', {});
+let catalog = read('null-tide-real-catalog-v4', {});
 if (!catalog || Array.isArray(catalog) || typeof catalog !== 'object') catalog = {};
 catalog = Object.fromEntries(SPECIES.filter(f => Number.isSafeInteger(catalog[f.id]) && catalog[f.id] > 0).map(f => [f.id, catalog[f.id]]));
-let checkpoint = read('null-tide-dive-v3', null);
-if(!checkpoint||checkpoint.version!==3||!Number.isSafeInteger(checkpoint.seed)||!Number.isSafeInteger(checkpoint.sector)||checkpoint.sector<0||checkpoint.sector>1000000)checkpoint=null;
-let deepest = Number(read('null-tide-deepest',200))||200;
+let checkpoint = read('null-tide-dive-v4', null) ?? read('null-tide-dive-v3', null);
+if(checkpoint?.version===3)checkpoint={...checkpoint,version:4,maxSector:checkpoint.sector,catches:[],floors:{},cycles:{}};
+if(!checkpoint||checkpoint.version!==4||!Number.isSafeInteger(checkpoint.seed)||!Number.isSafeInteger(checkpoint.sector)||checkpoint.sector<0||checkpoint.sector>1000000)checkpoint=null;
+let deepest = Number(read('null-tide-deepest-v4',read('null-tide-deepest',200)))||200;
 let game = new Expedition(271828,{known:Object.keys(catalog)});
 let mode = 'title';
 let previous = 0;
@@ -90,13 +91,13 @@ function notify(title, body = '', duration = 4) {
 function openModal(html, onClose = null) {
   oldFocus = document.activeElement;
   modalClose = onClose;
-  $('modal-content').classList.remove('journal-sheet');
+  $('modal-content').classList.remove('journal-sheet','chart-view');
   $('modal-content').innerHTML = `${onClose ? '<button class="dialog-close" id="dialog-close" aria-label="閉じる">×</button>' : ''}${html}`;
   if (onClose) $('dialog-close').onclick = onClose;
   show('modal');
   clearInput();
   syncViewport();
-  requestAnimationFrame(() => $('modal-content').querySelector('button,a,input')?.focus());
+  requestAnimationFrame(() => $('modal-content').querySelector('button,a,input,select')?.focus());
 }
 
 function closeModal() {
@@ -116,8 +117,8 @@ function setMapExpanded(expanded) {
 }
 
 function saveDive(){
-  checkpoint=game.snapshot();save('null-tide-dive-v3',checkpoint);
-  deepest=Math.max(deepest,sectorInfo(game.sector).depth);save('null-tide-deepest',deepest);
+  checkpoint=game.snapshot();save('null-tide-dive-v4',checkpoint);
+  deepest=Math.max(deepest,sectorInfo(game.sector).depth);save('null-tide-deepest-v4',deepest);
 }
 async function enterFullscreen(){
   try{if(!document.fullscreenElement&&document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch{}
@@ -177,11 +178,11 @@ function pause() {
     <p>潜航を止めています。酸素も減らないので、ごゆっくり。</p>
     <div class="modal-actions">
       <button class="primary" id="resume">${icon('play')}潜航を続ける</button>
-      <button class="secondary" id="pause-journal">図鑑・海図</button><button class="secondary" id="pause-help">あそびかた</button>
+      <button class="secondary" id="warp-menu">ワープ</button><button class="secondary" id="market-menu">浅瀬の商人</button><button class="secondary" id="transfer-menu">データ引継ぎ</button><button class="secondary" id="pause-journal">図鑑・海図</button><button class="secondary" id="pause-help">あそびかた</button>
       <button class="secondary" id="pause-fullscreen">全画面</button><button class="secondary" id="pause-sound">サウンド切替</button>
       <button class="text-button" id="abandon">タイトルへ戻る</button>
     </div>`, resume);
-  $('resume').onclick = resume;
+  $('resume').onclick = resume;$('warp-menu').onclick=warpMenu;$('market-menu').onclick=market;$('transfer-menu').onclick=()=>transferMenu('playing');
   $('pause-fullscreen').onclick = enterFullscreen;
   $('pause-sound').onclick=()=>{audio.init();audio.toggle();updateSound();save('null-tide-sound',audio.enabled);text('pause-sound',audio.enabled?'サウンド：あり':'サウンド：なし');};
   $('pause-journal').onclick = () => journal('paused');
@@ -213,7 +214,7 @@ function help(returnTo = mode) {
   openModal(`
     <div class="micro">あそびかた</div>
     <h2 id="modal-title">深く潜って、魚図鑑を完成させる。</h2>
-    <p>浅瀬から深淵まで、全<b>24種類</b>の生きものを集めよう。<br>潜降口から300mずつ深く潜れます。記録回収は任意の寄り道です。</p>
+    <p>浅瀬から深淵まで、全<b>${SPECIES.length.toLocaleString()}種類</b>の生きものを集めよう。<br>潜降口から300mずつ深く潜れます。各深度で潮流鍵を3つ集め、古代神殿の紋章の順序を解くと次へ進めます。上昇口から浅い海にも戻れます。</p>
     <div class="controls-grid">
       <div class="control"><kbd>W A S D</kbd><kbd>↑ ← ↓ →</kbd> 移動<small>機体には少し慣性があります。曲がる手前でゆっくりと。</small></div>
       <div class="control"><kbd>Space</kbd> ソナー<small>暗闇が一時的に見えるように。ただし、その音を聞いた監視機も近づいてきます。</small></div>
@@ -236,26 +237,52 @@ function help(returnTo = mode) {
   $('close-help').onclick = leave;
 }
 
-function journal(returnTo = mode) {
-  if (mode === 'playing') mode = 'paused';
-  const leave = () => { closeModal(); mode = returnTo === 'title' ? 'title' : 'playing'; };
-  const known = SPECIES.filter(f => catalog[f.id] > 0).length;
-  openModal(`
-    <div class="micro">${returnTo==='title'?'調査ノート · 記録は自動保存':'調査ノート · 潜航は一時停止中'}</div>
-    <h2 id="modal-title">この海で、出会ったもの。</h2>
-    <p>${sectorInfo(game.sector).name} · 水深 ${sectorInfo(game.sector).depth.toLocaleString()} m<br>この深度にいる未発見の生きもの：${availableSpecies(game.sector).filter(i=>!catalog[SPECIES[i].id]).length} 種</p>
-    <div class="journal-tabs" role="tablist"><button id="codex-tab" role="tab" aria-selected="true">魚図鑑 ${known} / ${SPECIES.length}</button><button id="chart-tab" role="tab" aria-selected="false">海図・探索</button></div>
-    <div id="codex-panel" role="tabpanel" aria-labelledby="codex-tab"><p>この海だけに棲む生きものたち。捕獲した記録は、次の潜航にも残ります。</p><div class="codex-grid">${SPECIES.map((f,i) => `<article class="specimen ${catalog[f.id]?'known':'unknown'}"><div class="specimen-art">${fishSVG(i)}</div><small>${catalog[f.id]?f.rarity:'未発見'} · No.${String(i+1).padStart(2,'0')}</small><h3>${catalog[f.id]?f.name:'？？？'}</h3><p>${catalog[f.id]?f.note:`水深 ${f.minDepth.toLocaleString()} m から出会えます。深く潜って探そう。`}</p><b>${catalog[f.id]?`${catalog[f.id]} 匹を記録`:`生息深度 ${f.minDepth.toLocaleString()} m〜`}</b></article>`).join('')}</div></div>
-    <div id="chart-panel" class="hidden" role="tabpanel" aria-labelledby="chart-tab"><p>${sectorInfo(game.sector).name} · 探索 ${game.exploration()}% · ${game.map.rooms.filter(r=>r.visited).length} / ${game.map.rooms.length} 地点<br>黄：次の深度への潜降口 / 紫：沈船・調査点 / □：補給基地</p><canvas id="large-chart" width="738" height="534" aria-label="現在の海域の大きな海図"></canvas><p>暗い場所は未探索です。ソナーを使うと周囲の地形が海図に残ります。<br>今回の潜航：捕獲 ${game.catches.length} 匹 · サルベージ・調査 ${game.salvaged} 箇所</p></div>
-    <div class="modal-actions"><button class="primary" id="close-journal">${icon('arrow')}${returnTo==='title'?'タイトルへ':'潜航を続ける'}</button></div>`, leave);
-  $('modal-content').classList.add('journal-sheet');
-  const tab = chart => {
-    $('codex-panel').classList.toggle('hidden', chart); $('chart-panel').classList.toggle('hidden', !chart);
-    $('codex-tab').setAttribute('aria-selected', String(!chart)); $('chart-tab').setAttribute('aria-selected', String(chart));
-    if(chart) renderer.minimap($('large-chart'),game);
+function journal(returnTo=mode,showChart=false) {
+  if(mode==='playing')mode='paused';
+  const leave=()=>{closeModal();mode=returnTo==='title'?'title':'playing';};
+  const known=Object.keys(catalog).length,benefit=depthBenefits(game.maxSector);
+  openModal(`<div class="micro">海洋調査ノート · 記録は自動保存</div><h2 id="modal-title">世界の魚、${SPECIES.length.toLocaleString()} 種。</h2>
+    <p>${sectorInfo(game.sector).name} · 水深 ${sectorInfo(game.sector).depth.toLocaleString()} m · 潮流鍵 ${game.map.cores.filter(k=>k.done).length}/3<br>開拓ボーナス：酸素 ${benefit.oxygen}秒 / 捕獲速度 ×${benefit.capture.toFixed(2)} / この深度の報酬 ×${depthBenefits(game.sector).reward.toFixed(2)}</p>
+    <div class="journal-tabs" role="tablist"><button id="codex-tab" role="tab" aria-selected="true">魚図鑑 ${known.toLocaleString()} / ${SPECIES.length.toLocaleString()}</button><button id="chart-tab" role="tab" aria-selected="false">海図・潮流鍵</button></div>
+    <div id="codex-panel" role="tabpanel"><div class="catalog-filters"><input id="fish-search" type="search" placeholder="和名・学名・科名で検索" aria-label="魚の名前を検索"><select id="fish-filter" aria-label="図鑑の表示"><option value="all">すべて</option><option value="known">捕獲済み</option><option value="unknown">未捕獲</option><option value="depth">この深度で出会える魚</option></select></div><p id="catalog-results"></p><div id="catalog-grid" class="codex-grid"></div><div class="catalog-pages"><button id="fish-prev" class="secondary">前の24種</button><span id="fish-page"></span><button id="fish-next" class="secondary">次の24種</button></div><p>実在する魚の和名・学名を収録。出現深度・色・大きさはゲーム用の表現です。図鑑の全種類を、魚群を更新しながら捕獲できます。</p><a href="https://www.gbif.org/dataset/6b6b2923-0a10-4708-b170-5b7c611aceef" target="_blank" rel="noreferrer">名称データ：ENA taxonomy / GBIF ↗</a></div>
+    <div id="chart-panel" class="hidden" role="tabpanel"><p class="chart-legend">水色：潮流鍵（3つ＋神殿の謎で開放） / 黄：潜降 / 青：上昇 / □：補給</p><p class="chart-explanation">上昇は自由です。集めた鍵と海図は再訪しても残ります。補給ブイで魚群を更新すると、未捕獲の魚を優先して探せます。</p><canvas id="large-chart" width="738" height="534" aria-label="潮流鍵と上下の移動口を示す海図"></canvas></div>
+    <div class="modal-actions"><button class="primary" id="close-journal">${returnTo==='title'?'タイトルへ':'探索を続ける'}</button></div>`,leave);
+  $('modal-content').classList.add('journal-sheet');let page=0;
+  const draw=()=>{const q=$('fish-search').value.trim().toLowerCase(),filter=$('fish-filter').value,depth=sectorInfo(game.sector).depth;
+    const list=SPECIES.map((f,i)=>({f,i})).filter(({f})=>(!q||`${f.name} ${f.scientific} ${f.family}`.toLowerCase().includes(q))&&(filter!=='known'||catalog[f.id])&&(filter!=='unknown'||!catalog[f.id])&&(filter!=='depth'||(f.minDepth<=depth&&depth<=f.maxDepth)));
+    page=Math.max(0,Math.min(page,Math.ceil(list.length/24)-1));text('catalog-results',`${list.length.toLocaleString()} 種 · 捕獲済み ${known.toLocaleString()} 種`);text('fish-page',`${page+1} / ${Math.max(1,Math.ceil(list.length/24))}`);$('fish-prev').disabled=page===0;$('fish-next').disabled=(page+1)*24>=list.length;
+    $('catalog-grid').innerHTML=list.slice(page*24,page*24+24).map(({f,i})=>`<article class="specimen ${catalog[f.id]?'known':'unknown'}"><div class="specimen-art">${fishSVG(i)}</div><small>No.${String(i+1).padStart(4,'0')} · ${catalog[f.id]?'捕獲済み':'未捕獲'}</small><h3>${f.name}</h3><p><i>${f.scientific}</i><br>${f.family}<br>${f.rarity} · 基準重量 ${f.baseGrams.toLocaleString()} g<br>固有価値 ${f.intrinsic} G/kg</p><b>出現深度（ゲーム） ${f.minDepth.toLocaleString()} m〜${Number.isFinite(f.maxDepth)?f.maxDepth.toLocaleString()+' m':''}</b></article>`).join('')||'<p>該当する魚がいません。</p>';
   };
-  for(const id of ['codex-tab','chart-tab'])$(id).onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const chart=e.key==='End'||(e.key!=='Home'&&id==='codex-tab');tab(chart);$(chart?'chart-tab':'codex-tab').focus();}};
-  $('codex-tab').onclick=()=>tab(false); $('chart-tab').onclick=()=>tab(true); $('close-journal').onclick=leave;
+  $('fish-search').oninput=$('fish-filter').onchange=()=>{page=0;draw();};$('fish-prev').onclick=()=>{page--;draw();};$('fish-next').onclick=()=>{page++;draw();};draw();
+  const tab=chart=>{$('modal-content').classList.toggle('chart-view',chart);$('codex-panel').classList.toggle('hidden',chart);$('chart-panel').classList.toggle('hidden',!chart);$('codex-tab').setAttribute('aria-selected',String(!chart));$('chart-tab').setAttribute('aria-selected',String(chart));if(chart)renderer.minimap($('large-chart'),game);};
+  $('codex-tab').onclick=()=>tab(false);$('chart-tab').onclick=()=>tab(true);$('close-journal').onclick=leave;tab(showChart);
+}
+
+function warpMenu(){
+ const leave=()=>{closeModal();mode='playing';};mode='paused';
+ openModal(`<div class="micro">開拓した海へ</div><h2 id="modal-title">ワープ航路</h2><p>開拓済みの深度へ自由に移動できます。鍵・海図は保持します。</p><div class="warp-list">${Array.from({length:Math.min(101,game.maxSector+1)},(_,i)=>`<button class="secondary" data-warp="${i}" ${i===game.sector?'disabled':''}>${sectorInfo(i).depth.toLocaleString()} m ${i===0?'· 浅瀬の商人':''}</button>`).join('')}</div>`,leave);
+ for(const b of document.querySelectorAll('[data-warp]'))b.onclick=()=>{game.warp(Number(b.dataset.warp));renderer.setWorld(game.map);leave();saveDive();updateHUD();notify('ワープ完了');};
+}
+function market(){
+ if(game.sector!==0||dist(game.player,game.map.hub)>120){warpMenu();return;}
+ mode='paused';const leave=()=>{closeModal();mode='playing';};
+ const total=game.bag.reduce((n,v)=>n+v.price,0);
+ openModal(`<div class="micro">浅瀬の桟橋 · 船大工ゲンさん</div><h2 id="modal-title">「いい獲物、揚がったかい？」</h2><p>所持金 ${game.coins.toLocaleString()} G · 積み荷 ${game.bag.length}匹 · 査定 ${total.toLocaleString()} G<br>重さと固有価値、希少度が高い獲物ほど高く買い取るよ。</p><button class="primary" id="sell-bag" ${total?'':'disabled'}>積み荷をまとめて売る</button><div class="upgrades">${[['engine','エンジン','移動速度 +10%'],['tank','酸素タンク','容量 +30秒'],['net','捕獲ネット','捕獲速度 +15%']].map(([id,name,note])=>`<button class="upgrade" data-buy="${id}" ${(game.shopLevels[id]||0)>=5||game.coins<300*2**(game.shopLevels[id]||0)?'disabled':''}><strong>${name}</strong><p>Lv.${game.shopLevels[id]||0}/5 · ${note}</p><small>${300*2**(game.shopLevels[id]||0)} G</small></button>`).join('')}</div><p>${game.bag.slice(-8).map(v=>`${v.name} · ${v.grams.toLocaleString()} g · ${v.price.toLocaleString()} G`).join('<br>')||'捕まえた生き物をここへ持ち帰ろう。'}</p>`,leave);
+ $('sell-bag').onclick=()=>{game.sell();saveDive();market();};for(const b of document.querySelectorAll('[data-buy]'))b.onclick=()=>{game.buy(b.dataset.buy);saveDive();market();};
+}
+function ruinPuzzle(){
+ mode='paused';holding=false;const leave=()=>{closeModal();mode='playing';};const symbols=['☀ 太陽','☾ 月','≈ 波'],order=game.map.puzzle;
+ const ready=game.map.cores.every(k=>k.done);
+ openModal(`<div class="micro">古代の潮流神殿</div><h2 id="modal-title">三つの紋章を並べよ。</h2><p>${ready?`鍵の碑文：「${symbols[order[0]]}は${symbols[order[1]]}より先。${symbols[order[2]]}は${symbols[order[1]]}より後。」<br>紋章を正しい順序で押すと潜降口が開きます。`:'碑文を読むには潮流鍵を3つ集める必要があります。海図の水色の結晶を探そう。'}</p><p id="puzzle-input">${ready?'選択：':'鍵 '+game.map.cores.filter(k=>k.done).length+'/3'}</p><div class="modal-actions">${ready?symbols.map((v,i)=>`<button class="secondary" data-symbol="${i}">${v}</button>`).join(''):''}</div>`,leave);
+ let chosen=[];for(const b of document.querySelectorAll('[data-symbol]'))b.onclick=()=>{chosen.push(Number(b.dataset.symbol));text('puzzle-input',chosen.map(i=>symbols[i]).join(' → '));if(chosen.length===3){if(game.solve(chosen)){saveDive();leave();updateHUD();notify('神殿の封印を解除','潜降口が開きました。');}else{chosen=[];text('puzzle-input','順序が違うようだ。碑文を読み直そう。');}}};
+}
+function transferMenu(returnTo=mode){
+ if(mode==='playing')mode='paused';const leave=()=>{closeModal();mode=returnTo==='title'?'title':'playing';};
+ openModal(`<div class="micro">署名付きセーブコード</div><h2 id="modal-title">別の端末へ引き継ぐ</h2><p>コードを保存し、別の端末のこの画面へ貼り付けます。コードの書き換えはサーバー署名で検出します。コードを知る人は記録を復元できます。</p><textarea id="save-code" aria-label="引継ぎコード" rows="5" spellcheck="false"></textarea><p id="transfer-status"></p><div class="modal-actions"><button class="primary" id="export-save">コードを作る</button><button class="secondary" id="copy-save">コピー</button><button class="secondary" id="import-save">検証して引き継ぐ</button></div>`,leave);
+ const call=async body=>{const r=await fetch('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'引継ぎに失敗');return d;};
+ $('export-save').onclick=async()=>{try{const source=returnTo==='title'?checkpoint:game.snapshot();if(!source)throw Error('先に潜航を始めてください。');const d=await call({action:'export',state:{v:1,dive:source,catalog}});$('save-code').value=d.code;text('transfer-status','コードを作成しました。安全な場所へ保存してください。');}catch(e){text('transfer-status',e.message);}};
+ $('copy-save').onclick=async()=>{try{await navigator.clipboard.writeText($('save-code').value);text('transfer-status','コピーしました。');}catch{$('save-code').select();text('transfer-status','コードを選択しました。コピーしてください。');}};
+ $('import-save').onclick=async()=>{try{const d=await call({action:'import',code:$('save-code').value.trim()});checkpoint=d.state.dive;catalog=d.state.catalog;save('null-tide-dive-v4',checkpoint);save('null-tide-real-catalog-v4',catalog);leave();start();notify('引継ぎが完了しました');}catch(e){text('transfer-status',e.message);}};
 }
 
 function credits() {
@@ -280,12 +307,12 @@ const upgrades = [
 ];
 
 function upgradeScreen() {
-  mode='upgrade';const next=sectorInfo(game.sector+1);
+  mode='upgrade';const next=sectorInfo(game.sector+1),first=game.sector+1>game.maxSector,benefit=depthBenefits(Math.max(game.maxSector,game.sector+1));
   const newKinds=availableSpecies(game.sector+1).filter(i=>!catalog[SPECIES[i].id]).length;
   openModal(`<div class="micro">さらに深い海へ · 図鑑 ${Object.keys(catalog).length} / ${SPECIES.length}</div>
     <h2 id="modal-title">水深 ${next.depth.toLocaleString()} m へ。</h2>
-    <p>${next.name}で出会える未発見の魚：${newKinds} 種。<br>装備を選ぶと潜降します。酸素・耐久・餌は補給されます。</p>
-    <div class="upgrades">${upgrades.map((u,i)=>`<button class="upgrade" data-upgrade="${u.id}" aria-keyshortcuts="${i+1}">${icon(u.icon)}<small>${u.label}</small><strong>${u.name}</strong><p>${u.description}</p></button>`).join('')}</div>
+    <p>${next.name}で出会える未発見の魚：${newKinds} 種。<br>${first?`初到達の報酬 +${1000+(game.sector+1)*300} pt、装備を1つ強化。`:'開放済みの深度へ再訪（装備強化・初到達報酬は一度だけ）。'}<br>最大酸素 ${benefit.oxygen}秒 · 捕獲速度 ×${benefit.capture.toFixed(2)} · 捕獲報酬 ×${depthBenefits(game.sector+1).reward.toFixed(2)}</p>
+    <div class="upgrades">${(first?upgrades:[{id:"return",icon:"arrow",name:"この海域へ移動",label:"再訪",description:"以前に集めた鍵と海図を引き継ぎます。"}]).map((u,i)=>`<button class="upgrade" data-upgrade="${u.id}" aria-keyshortcuts="${i+1}">${icon(u.icon)}<small>${u.label}</small><strong>${u.name}</strong><p>${u.description}</p></button>`).join('')}</div>
     <p class="micro">強化上限でも次へ進めます。図鑑完成後も、さらに深く潜れます。</p>`);
   for(const button of document.querySelectorAll('[data-upgrade]'))button.onclick=()=>{
     game.upgrade(button.dataset.upgrade);renderer.setWorld(game.map);closeModal();mode='playing';
@@ -298,7 +325,7 @@ function completionScreen(){
   if(game.state==='upgrade'){game.state='playing';game.extraction=0;}
   mode='complete';saveDive();
   const leave=()=>{closeModal();if(game.state==='lost')start();else mode='playing';};
-  openModal(`<div class="micro">魚図鑑 ${SPECIES.length} / ${SPECIES.length} · COMPLETE</div><h2 id="modal-title">深海の図鑑、完成！</h2><p>全24種類の生きものに出会いました。<br>図鑑は保存済みです。この先の海にも、潜航は続きます。</p><div class="result-stats"><div><span class="micro">到達した深度</span><strong>${sectorInfo(game.sector).depth.toLocaleString()} m</strong></div><div><span class="micro">今回の捕獲</span><strong>${game.catches.length} 匹</strong></div></div><div class="modal-actions"><button class="primary" id="continue-deep">さらに探検する</button><button class="secondary" id="complete-book">完成した図鑑を見る</button></div>`,leave);
+  openModal(`<div class="micro">魚図鑑 ${SPECIES.length} / ${SPECIES.length} · COMPLETE</div><h2 id="modal-title">深海の図鑑、完成！</h2><p>全${SPECIES.length.toLocaleString()}種類の魚に出会いました。<br>図鑑は保存済みです。この先の海にも、潜航は続きます。</p><div class="result-stats"><div><span class="micro">到達した深度</span><strong>${sectorInfo(game.sector).depth.toLocaleString()} m</strong></div><div><span class="micro">今回の捕獲</span><strong>${game.catches.length} 匹</strong></div></div><div class="modal-actions"><button class="primary" id="continue-deep">さらに探検する</button><button class="secondary" id="complete-book">完成した図鑑を見る</button></div>`,leave);
   $('continue-deep').onclick=leave;$('complete-book').onclick=()=>{if(game.state==='lost')start();journal('playing');};
 }
 function result(_won,reason){
@@ -315,16 +342,20 @@ function processEvents() {
       renderer.burst(event.x, event.y, event.type === 'core' ? '#f7d5a0' : '#9ed9c1', event.type === 'core' ? 45 : 12);
     }
     if (event.type === 'core') {
-      holding=false;notify('遺跡の記録を回収しました','寄り道の報酬 +500 pt · 酸素+15秒',3);
+      holding=false;saveDive();notify('潮流鍵を見つけた！',`${game.map.cores.filter(k=>k.done).length} / 3 · 3つ揃うと潜降口が開放されます`,3);
     }
     if (event.type === 'catch') {
       netArmed=false;
-      const species=SPECIES[event.species],first=!catalog[species.id];catalog[species.id]=(Number(catalog[species.id])||0)+1;save('null-tide-catalog',catalog);saveDive();
+      const species=SPECIES[event.species],first=!catalog[species.id];catalog[species.id]=(Number(catalog[species.id])||0)+1;save('null-tide-real-catalog-v4',catalog);saveDive();
       renderer.burst(event.x,event.y,species.color,25);
-      notify(`${first?'新種を図鑑に登録！ ':''}${species.name}を捕獲`, `+${species.value} pt · この海域の捕獲 ${game.fishCount} 匹`,3);
+      notify(`${first?'新種を図鑑に登録！ ':''}${species.name}を捕獲`, `重さ ${event.grams?.toLocaleString()} g · 査定 ${event.price?.toLocaleString()} G · ${species.rarity}`,3);
     }
     if(event.type==='research')notify('生態調査の依頼を達成！','+650 pt · 餌+2 · 酸素+40秒',4);
     if(event.type==='collection-complete')completed=true;
+    if(event.type==='ruin')ruinPuzzle();
+    if(event.type==='ascent'){holding=false;renderer.setWorld(game.map);saveDive();notify(`${sectorInfo(game.sector).depth.toLocaleString()} m へ上昇`,'鍵・海図・捕獲記録はそのままです');}
+    if(event.type==='school'){holding=false;notify('新しい魚群を発見','未捕獲の魚を優先して探せます');saveDive();}
+    if(event.type==='locked'){holding=false;notify('潜降口は閉じています','海図を開き、潮流鍵を3つ探そう。');}
     if(event.type==='site')holding=false;
     if(event.type==='site')notify(event.kind==='wreck'?'沈船から物資を回収しました':'生態調査ポイントを記録しました',event.kind==='wreck'?'+350 pt · 餌+2 · 酸素+40秒 · 耐久+1':'+450 pt · 餌+2 · 酸素+40秒 · 周辺の海図を更新',4);
     if(event.type==='discovery')notify(`発見：${event.name}`,'新たな探索地点を海図に記録 · +100 pt',2.5);
@@ -374,19 +405,20 @@ function updateHUD() {
   if(fish){show('fish-hint');text('fish-hint', `${SPECIES[fish.species].name} · ${fish.alert>.2?'驚いています。餌で落ち着かせよう':netArmed?'静かに近づこう':mobile()?'捕獲をタップ':'F で捕獲を開始'}`);}else hide('fish-hint');
   if(game.catchProgress>0){$('net-fill').style.width=`${game.catchProgress*100}%`;text('net-status',`${mobile()?'':'捕獲中 '}${Math.round(game.catchProgress*100)}%`);}
   const near = game.near();
-  if (['core','wreck','survey','descent'].includes(near?.kind)) {
+  text('gate-status',game.unlocked()?'鍵 ✓':`鍵 ${game.map.cores.filter(k=>k.done).length}/3`);
+  if ((['core','wreck','survey','descent','ascent','ruin'].includes(near?.kind)||(near?.kind==='base'&&game.map.fish.some(f=>f.caught)))) {
     show('interact');
-    text('interact-label', near.kind==='descent'?(mobile()?`${sectorInfo(game.sector+1).depth.toLocaleString()} m へ潜る`:`さらに深く潜る（${sectorInfo(game.sector+1).depth.toLocaleString()} m）`):holding?'調査中…':near.kind==='wreck'?'物資を回収する':near.kind==='survey'?'周囲を調査する':'遺跡を調べる');
-    $('interact-progress').style.width = `${(near.kind!=='descent'?near.target.progress:game.extraction/.3) * 100}%`;
+    text('interact-label',near.kind==='ruin'?'古代神殿を調べる':near.kind==='ascent'?`${sectorInfo(game.sector-1).depth.toLocaleString()} m へ上昇`:near.kind==='base'?(game.schoolCooldown>0?'魚群を探索中…':'新しい魚群を探す'):near.kind==='descent'?(game.unlocked()?`${sectorInfo(game.sector+1).depth.toLocaleString()} m へ潜る`:`潮流鍵 ${game.map.cores.filter(k=>k.done).length}/3 · 海図で確認`):holding?'調査中…':near.kind==='core'?'潮流鍵を回収':near.kind==='wreck'?'物資を回収':'周囲を調査');
+    $('interact-progress').style.width = `${(['core','wreck','survey'].includes(near.kind)?near.target.progress:near.kind==='descent'?Math.max(0,game.extraction/.3):0) * 100}%`;
   } else {
     hide('interact');
     holding = false;
   }
-  const target=game.map.descent;
+  const target=game.map.cores.every(k=>k.done)&&!game.unlocked()?game.map.ruin:game.unlocked()?game.map.descent:[...game.map.cores].filter(k=>!k.done).sort((a,b)=>dist(p,a)-dist(p,b))[0]||game.map.descent;
   $('waypoint').classList.toggle('waypoint-needed',dist(p,target)>450);
   const angle=Math.atan2(target.y-p.y,target.x-p.x);
   const arrow=['→','↘','↓','↙','←','↖','↑','↗'][(Math.round(angle/(Math.PI/4))+8)%8];
-  $('waypoint').innerHTML=`<span class="direction">${arrow}</span>潜降口<b>${Math.round(dist(p,target)/6)} m</b>`;
+  $('waypoint').innerHTML=`<span class="direction">${arrow}</span>${game.unlocked()?'潜降口':game.map.cores.every(k=>k.done)?'古代神殿':'潮流鍵'}<b>${Math.round(dist(p,target)/6)} m</b>`;
   if(near?.kind==='base'&&(!fish||p.oxygen<game.maxOxygen-5)){show('fish-hint');text('fish-hint','基地で酸素・耐久を補給中');}
   if ($('map-toggle').getAttribute('aria-expanded') === 'true') renderer.minimap($('minimap'), game);
 }
@@ -403,7 +435,7 @@ $('fullscreen').onclick=enterFullscreen;
 $('rotate-fullscreen').onclick=enterFullscreen;
 $('journal').onclick = () => journal();
 $('survey-progress').onclick = () => journal();
-$('title-help').onclick = () => help('title');
+$('title-help').onclick = () => help('title');$('title-transfer').onclick=()=>transferMenu('title');
 $('help').onclick = () => { if (['title', 'playing', 'paused'].includes(mode)) help(); };
 $('credits').onclick = credits;
 $('sound').onclick = () => {
@@ -422,6 +454,7 @@ bindGameAction($('net'), toggleNet, canPlay);
 bindGameAction($('dash'), dash, canPlay);
 bindGameAction($('pause'), pause, canPlay);
 bindGameAction($('objective'), () => journal(), canPlay);
+bindGameAction($('gate-status'), () => journal(mode,true), canPlay);
 bindGameAction($('pulse'), () => {pulse();setToolsExpanded(false);}, canPlay);
 bindGameAction($('bait'), () => {game.bait();updateHUD();setToolsExpanded(false);}, canPlay);
 bindGameAction($('interact-button'), () => {holding=true;updateHUD();}, canPlay);
@@ -431,7 +464,7 @@ thumbStick = bindThumbStick($('movement-zone'), $('joystick'), $('joystick-knob'
 document.addEventListener('keydown', e => {
   if (!$('modal').classList.contains('hidden')) {
     if (e.code === 'Tab') {
-      const items = [...$('modal-content').querySelectorAll('button,a,input')];
+      const items = [...$('modal-content').querySelectorAll('button,a,input,select')].filter(el=>!el.disabled&&el.getClientRects().length);
       const first = items[0], last = items.at(-1);
       if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
       else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
@@ -445,7 +478,7 @@ document.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyE', 'KeyF', 'KeyQ', 'KeyJ'].includes(e.code)) e.preventDefault();
   if (e.code === 'Escape') { pause(); return; }
   if(e.code==='KeyJ'&&!e.repeat&&['title','playing'].includes(mode)){journal();return;}
-  const focusedControl = document.activeElement?.closest('button,a,input');
+  const focusedControl = document.activeElement?.closest('button,a,input,select');
   if (mode === 'title' && e.code === 'Enter' && (!focusedControl || focusedControl.id === 'start')) {
     e.preventDefault();
     start();

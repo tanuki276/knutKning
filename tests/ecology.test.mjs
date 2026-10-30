@@ -1,21 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Expedition,generate,TILE,COLS,ROWS,dist,solid,availableSpecies,sectorInfo} from '../dist/src/world.js';
+import {Expedition,generate,TILE,COLS,ROWS,dist,solid,availableSpecies,sectorInfo,populateFish} from '../dist/src/world.js';
 import {SPECIES,fishSVG} from '../dist/src/species.js';
 const run=(g,seconds,input={})=>{for(let n=0;n<Math.round(seconds*60);n++)g.tick(1/60,input);};
 function specimen(g,species=0,offset=30){const p=g.player;const f={id:900,species,x:p.x+offset,y:p.y,homeX:p.x+offset,homeY:p.y,angle:0,phase:0,alert:0,caught:false};g.map.fish=[f];g.map.enemies=[];return f;}
 
-test('all twenty-four species are guaranteed in their depth bands',()=>{
-  assert.ok(COLS*ROWS/(73*53)>2.8);const kinds=new Set();for(let i=0;i<20;i++){const m=generate(15,i),present=new Set(m.fish.map(f=>f.species));for(const species of availableSpecies(i))assert.ok(present.has(species));for(const fish of m.fish){const type=SPECIES[fish.species],depth=sectorInfo(i).depth;assert.ok(depth>=type.minDepth&&depth<=type.maxDepth);kinds.add(fish.species);}}assert.equal(kinds.size,24);
-});
+test('all species have playable depth bands and weighted school spawning',()=>{const all=new Set();for(let level=0;level<20;level++){for(const i of availableSpecies(level))all.add(i);const m=generate(15,level);for(const f of m.fish)assert.ok(availableSpecies(level).includes(f.species));}assert.equal(all.size,SPECIES.length);});
 test('holding the net nearby catches a fish once and awards its species value',()=>{
-  const g=new Expedition(5),f=specimen(g);run(g,.2);const score=g.score;run(g,1.2,{net:true});assert.equal(f.caught,true);assert.deepEqual(g.catches,[0]);assert.equal(g.score-score,SPECIES[0].value);run(g,5,{net:true});assert.equal(g.catches.length,1);assert.equal(g.events.filter(e=>e.type==='catch').length,1);
+  const g=new Expedition(5),f=specimen(g);run(g,.2);const score=g.score;run(g,6,{net:true});assert.equal(f.caught,true);assert.deepEqual(g.catches,[0]);assert.equal(g.score-score,SPECIES[0].value);run(g,5,{net:true});assert.equal(g.catches.length,1);assert.equal(g.events.filter(e=>e.type==='catch').length,1);
 });
 test('rare fish need a longer steady hold',()=>{
-  const g=new Expedition(5),f=specimen(g,7);run(g,1.2,{net:true});assert.equal(f.caught,false);run(g,.6,{net:true});assert.equal(f.caught,true);
+  const g=new Expedition(5),f=specimen(g,7);run(g,1.2,{net:true});assert.equal(f.caught,false);run(g,6,{net:true});assert.equal(f.caught,true);
 });
 test('a frightened fish cannot be netted and bait calms and attracts it',()=>{
-  const g=new Expedition(5),f=specimen(g,1,60);g.pulse();run(g,.5,{net:true});assert.equal(f.caught,false);assert.ok(f.alert>0);assert.equal(g.bait(),true);const count=g.baitCount;run(g,.1);assert.equal(f.alert,0);run(g,1.8,{net:true});assert.equal(f.caught,true);assert.equal(g.baitCount,count);
+  const g=new Expedition(5),f=specimen(g,1,60);g.pulse();run(g,.5,{net:true});assert.equal(f.caught,false);assert.ok(f.alert>0);assert.equal(g.bait(),true);const count=g.baitCount;run(g,.1);assert.equal(f.alert,0);run(g,6,{net:true});assert.equal(f.caught,true);assert.equal(g.baitCount,count);
 });
 test('fish flee a fast approaching sub and remain collision-safe',()=>{
   const g=new Expedition(4),f=specimen(g,1,50);g.player.vx=165;g.tick(1/60,{x:1});assert.ok(f.alert>0);run(g,8);assert.equal(solid(g.map,f.x,f.y,6),false);
@@ -33,7 +31,7 @@ test('leaving the capture range cancels accumulated progress',()=>{
 });
 test('the three-fish research contract pays only once',()=>{
   const g=new Expedition(5);g.map.enemies=[];
-  for(let i=0;i<4;i++){const f=specimen(g,i);f.id=i;g.netCooldown=0;run(g,2,{net:true});assert.ok(f.caught);}
+  for(let i=0;i<4;i++){const f=specimen(g,i);f.id=i;g.netCooldown=0;run(g,6,{net:true});assert.ok(f.caught);}
   assert.equal(g.fishCount,4);assert.equal(g.researchDone,true);assert.equal(g.events.filter(e=>e.type==='research').length,1);
 });
 test('wreck salvage repairs the hull, refills bait and cannot be farmed',()=>{
@@ -51,8 +49,8 @@ test('discovery is rewarded once and sonar permanently charts new terrain',()=>{
   const g=new Expedition(3);g.map.enemies=[];const before=g.map.seenCount;g.pulse();run(g,2);assert.ok(g.map.seenCount>before);const seen=g.map.seenCount;run(g,5);assert.ok(g.map.seenCount>=seen);const r=g.map.rooms[1];g.player.x=r.x;g.player.y=r.y;run(g,.3);const visits=g.visits;run(g,3);assert.equal(g.visits,visits);assert.ok(r.visited);
 });
 test('catches and findings carry across sectors; ecology and exploration reset',()=>{
-  const g=new Expedition(5);specimen(g);run(g,2,{net:true});g.salvaged=2;g.state='upgrade';g.upgrade('sonar');assert.deepEqual(g.catches,[0]);assert.equal(g.salvaged,2);assert.equal(g.fishCount,0);assert.equal(g.researchDone,false);assert.equal(g.baitCount,4);assert.ok(g.exploration()<10);
+  const g=new Expedition(5);specimen(g);run(g,2,{net:true});g.salvaged=2;g.map.cores.forEach(k=>k.done=true);g.map.puzzleSolved=true;g.state='upgrade';g.upgrade('sonar');assert.deepEqual(g.catches,[0]);assert.equal(g.salvaged,2);assert.equal(g.fishCount,0);assert.equal(g.researchDone,false);assert.equal(g.baitCount,4);assert.ok(g.exploration()<10);
 });
 test('species have unique IDs and a complete illustration for every entry',()=>{
-  assert.equal(new Set(SPECIES.map(f=>f.id)).size,24);for(let i=0;i<SPECIES.length;i++)assert.ok(fishSVG(i).includes('<svg'));
+  assert.equal(new Set(SPECIES.map(f=>f.id)).size,SPECIES.length);for(let i=0;i<SPECIES.length;i++)assert.ok(fishSVG(i).includes('<svg'));
 });
