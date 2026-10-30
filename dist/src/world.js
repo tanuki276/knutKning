@@ -31,7 +31,7 @@ export function generate(seed,sector=0) {
   const connected=[hub],remaining=rooms.slice(1);
   while(remaining.length){let best=null;for(const a of connected)for(const b of remaining)if(!best||dist(a,b)<best.d)best={a,b,d:dist(a,b)};connect(best.a,best.b);connected.push(best.b);remaining.splice(remaining.indexOf(best.b),1);}
   for(const r of rooms.slice(1)){const nearest=rooms.filter(q=>q!==r).sort((a,b)=>dist(a,r)-dist(b,r));if(random()<.75)connect(r,nearest[1]);}
-  const far=rooms.slice(1).sort((a,b)=>dist(b,hub)-dist(a,hub)),cores=[far[0],far[5],far[10]].map((r,id)=>({...r,id,done:false,progress:0}));
+  const nearby=rooms.slice(1).sort((a,b)=>dist(a,hub)-dist(b,hub)),cores=[nearby[0],nearby[5],nearby[10]].map((r,id)=>({...r,id,done:false,progress:0}));
   const shards=[],vents=[],enemies=[],sites=[];
   rooms.slice(1).forEach((r,n)=>{
     for(let i=0;i<3;i++)shards.push({x:r.x+(random()-.5)*100,y:r.y+(random()-.5)*90,taken:false});
@@ -73,8 +73,9 @@ export class Expedition {
   emit(type,data={}){this.events.push({type,...data});}
   pulse(){const p=this.player;if(p.pulse>0||this.state!=='playing')return false;p.pulse=4.8;this.pings++;this.pulses.push({x:p.x,y:p.y,r:0,age:0,max:520*this.pulseRange});this.noise=1;for(const e of this.map.enemies)if(dist(e,p)<640*this.pulseRange){e.alert=7;e.targetX=p.x;e.targetY=p.y;}for(const f of this.map.fish)if(!f.caught&&dist(f,p)<400)f.alert=3;this.emit('pulse');return true;}
   dash(dx,dy){const p=this.player;if(p.dash>0||this.state!=='playing')return false;if(Math.hypot(dx,dy)<.1){dx=Math.cos(p.angle);dy=Math.sin(p.angle);}const d=Math.hypot(dx,dy);p.vx=dx/d*470;p.vy=dy/d*470;p.dashTime=.24;p.dash=2.4;this.emit('dash');for(const f of this.map.fish)if(dist(f,p)<160)f.alert=3;for(const e of this.map.enemies)if(dist(p,e)<115)e.stun=2.5;return true;}
-  unlocked(){return !!this.floors[this.sector]?.unlocked||(this.map.cores.every(c=>c.done)&&!!this.map.puzzleSolved);}
-  solve(sequence){if(!this.map.cores.every(k=>k.done))return false;if(sequence.join(',')!==this.map.puzzle.join(','))return false;this.map.puzzleSolved=true;this.emit('puzzle-solved');return true;}
+  unlocked(){return !!this.floors[this.sector]?.unlocked||(this.map.cores.some(c=>c.done)||!!this.map.puzzleSolved);}
+  objectiveTarget(){return this.unlocked()?this.map.descent:[...this.map.cores].filter(k=>!k.done).sort((a,b)=>dist(this.player,a)-dist(this.player,b))[0]||this.map.descent;}
+  solve(sequence){if(!Array.isArray(sequence))return false;if(sequence.join(',')!==this.map.puzzle.join(','))return false;this.map.puzzleSolved=true;this.emit('puzzle-solved');return true;}
   warp(level){if(!Number.isInteger(level)||level<0||level>this.maxSector||this.state!=='playing')return false;this.travel(level);this.emit('ascent');return true;}
   sell(){if(this.sector!==0||dist(this.player,this.map.hub)>120)return 0;const total=this.bag.reduce((n,v)=>n+v.price,0);this.coins+=total;this.bag=[];return total;}
   buy(kind){if(this.sector!==0||dist(this.player,this.map.hub)>120||!['engine','tank','net'].includes(kind))return false;const n=this.shopLevels[kind]||0,cost=300*2**n;if(n>=5||this.coins<cost)return false;this.coins-=cost;this.shopLevels[kind]=n+1;if(kind==='engine')this.speed=Math.min(2.4,this.speed*1.1);this.maxOxygen=depthBenefits(this.maxSector).oxygen+this.shopLevels.tank*30;this.captureRate=depthBenefits(this.maxSector).capture*(1+this.shopLevels.net*.15);return true;}

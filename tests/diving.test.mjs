@@ -9,9 +9,9 @@ test('the catalogue expands with depth instead of a three-stage win condition',(
   const early=new Set(availableSpecies(0));assert.ok(early.size<SPECIES.length);assert.equal(early.has(23),false);assert.ok(availableSpecies(19).includes(23));
   for(const level of [3,19,100,1000]){const g=new Expedition(2,{sector:level});assert.equal(g.sector,level);assert.ok(g.map.fish.length);assert.equal(g.state,'playing');}
 });
-test('the descent entrance requires three keys before an upgrade is offered',()=>{
+test('the descent entrance requires one key or a solved ruin before an upgrade is offered',()=>{
   const g=new Expedition(12);g.player.x=g.map.descent.x;g.player.y=g.map.descent.y;g.map.enemies=[];
-  run(g,.4,{interact:true});assert.equal(g.state,'playing');assert.ok(g.events.some(e=>e.type==='locked'));g.map.cores.forEach(k=>k.done=true);g.map.puzzleSolved=true;run(g,.1);run(g,.4,{interact:true});assert.equal(g.state,'upgrade');assert.equal(g.catches.length,0);assert.equal(g.recovered,0);g.upgrade('sonar');assert.equal(sectorInfo(g.sector).depth,500);
+  run(g,.4,{interact:true});assert.equal(g.state,'playing');assert.ok(g.events.some(e=>e.type==='locked'));g.map.cores[0].done=true;run(g,.1);run(g,.4,{interact:true});assert.equal(g.state,'upgrade');assert.equal(g.catches.length,0);assert.equal(g.recovered,0);g.upgrade('sonar');assert.equal(sectorInfo(g.sector).depth,500);
 });
 test('finishing the entire real-fish catalogue celebrates once and keeps the sea playable',()=>{
   const g=new Expedition(5,{sector:19,known:SPECIES.slice(0,-1).map(s=>s.id)});g.map.enemies=[];
@@ -37,4 +37,13 @@ test('thumb steering has a dead zone, proportional response and normalized diago
 });
 test('portrait phones are gated while landscape phone sizes can play',()=>{
   assert.equal(portraitViewport(390,844),true);assert.equal(portraitViewport(768,1024),true);assert.equal(portraitViewport(844,390),false);assert.equal(portraitViewport(568,320),false);assert.equal(portraitViewport(1364,936),false);
+});
+
+test('the ruin is a penalty-free alternative to collecting a key',()=>{
+ const g=new Expedition(98);assert.equal(g.unlocked(),false);assert.equal(g.solve([0,0,0]),false);assert.equal(g.player.hp,4);assert.equal(g.map.cores.some(k=>k.done),false);assert.equal(g.solve(g.map.puzzle),true);assert.equal(g.unlocked(),true);
+ const d=g.snapshot(),r=new Expedition(d.seed,d);assert.equal(r.unlocked(),true);assert.equal(r.map.cores.some(k=>k.done),false);
+});
+test('saved partially collected keys immediately use the relaxed rules',()=>{
+ const g=new Expedition(35);g.map.cores[2].done=true;const d=g.snapshot();d.floors[0].unlocked=false;
+ const r=new Expedition(d.seed,d);assert.equal(r.unlocked(),true);assert.equal(r.objectiveTarget(),r.map.descent);
 });

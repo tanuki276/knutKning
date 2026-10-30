@@ -91,13 +91,13 @@ function notify(title, body = '', duration = 4) {
 function openModal(html, onClose = null) {
   oldFocus = document.activeElement;
   modalClose = onClose;
-  $('modal-content').classList.remove('journal-sheet','chart-view');
+  $('modal-content').classList.remove('journal-sheet','chart-view','guide-sheet','intro-guide');
   $('modal-content').innerHTML = `${onClose ? '<button class="dialog-close" id="dialog-close" aria-label="閉じる">×</button>' : ''}${html}`;
   if (onClose) $('dialog-close').onclick = onClose;
   show('modal');
   clearInput();
   syncViewport();
-  requestAnimationFrame(() => $('modal-content').querySelector('button,a,input,select')?.focus());
+  requestAnimationFrame(() => $('modal-content').querySelector('button,a,input,select,textarea')?.focus());
 }
 
 function closeModal() {
@@ -142,6 +142,7 @@ function start(fresh=false) {
   for(const id of ['title-screen','title-depth','title-footer'])hide(id);
   show('hud');show('pause');document.body.classList.add('playing');closeModal();
   setMapExpanded(!mobile());saveDive();updateHUD();
+  if(!read('null-tide-rules-v5',false)){help('playing',true);return;}
   notify(`水深 ${sectorInfo(game.sector).depth.toLocaleString()} m から潜航`,mobile()?'捕獲はタップで開始。左のエリアをドラッグして移動しよう。':'F で捕獲を切替、Q で餌。潜降口からさらに深い海へ。',5);
 }
 function toggleNet(){if(mode!=='playing'||portrait())return;netArmed=!netArmed;updateHUD();}
@@ -208,33 +209,26 @@ function toTitle() {
   clearInput();
 }
 
-function help(returnTo = mode) {
+function help(returnTo = mode, first = false) {
   if (mode === 'playing') mode = 'paused';
-  const leave = () => { closeModal(); mode = returnTo === 'title' ? 'title' : 'playing'; };
-  openModal(`
-    <div class="micro">あそびかた</div>
-    <h2 id="modal-title">深く潜って、魚図鑑を完成させる。</h2>
-    <p>浅瀬から深淵まで、全<b>${SPECIES.length.toLocaleString()}種類</b>の生きものを集めよう。<br>潜降口から300mずつ深く潜れます。各深度で潮流鍵を3つ集め、古代神殿の紋章の順序を解くと次へ進めます。上昇口から浅い海にも戻れます。</p>
-    <div class="controls-grid">
-      <div class="control"><kbd>W A S D</kbd><kbd>↑ ← ↓ →</kbd> 移動<small>機体には少し慣性があります。曲がる手前でゆっくりと。</small></div>
-      <div class="control"><kbd>Space</kbd> ソナー<small>暗闇が一時的に見えるように。ただし、その音を聞いた監視機も近づいてきます。</small></div>
-      <div class="control"><kbd>Shift</kbd> 緊急加速<small>加速中は無敵。ぶつかった監視機をしばらく止められます。</small></div>
-      <div class="control"><kbd>E</kbd> 調べる・さらに深く潜る<small>潜降口や沈船の近くで1回押すだけ。スマホは画面下に現れるボタンをタップ。</small></div>
-      <div class="control"><kbd>F</kbd> 捕獲のオン・オフ<small>1回タップすると網を構え、近くの魚を自動で捕獲。1匹捕まえると解除されます。長押しは不要です。</small></div>
-      <div class="control"><kbd>Q</kbd> 餌をまく<small>周囲の魚を14秒間おびき寄せます。沈船や調査点で餌を補充できます。</small></div>
-      <div class="control"><kbd>J</kbd> 図鑑・大きな海図<small>捕まえた生きものは潜航を終えても図鑑に残ります。海図はソナーと移動で埋まります。</small></div>
-      <div class="control"><kbd>Esc</kbd> 休憩<small>いつでも一時停止できます。画面を離れたときも自動で停止。</small></div>
-      <div class="control">スマホで遊ぶとき<small>横向きで遊びます。左下をドラッグしたまま、右指で捕獲・加速をタップできます。餌・ソナーは「道具」から。左上の魚マークで図鑑、右上のメニューで休憩・設定。</small></div>
-    </div>
-    <p class="manual-tip">中央の調査基地は酸素と耐久を何度でも回復できます。<br>1海域で魚を3匹捕まえると調査依頼達成：+650 pt、餌+2、酸素+40秒。<br>潜降口では装備を強化して次の深度へ。図鑑と到達した深度は自動保存され、基地から続けられます。</p>
-    <label class="quality-toggle"><input type="checkbox" id="reduce" ${renderer.reduced ? 'checked' : ''}> 画面の揺れ・環境の動きを抑える</label>
-    <div class="modal-actions"><button class="primary" id="close-help">${icon('arrow')}${returnTo === 'title' ? 'タイトルに戻る' : '潜航を続ける'}</button></div>`, leave);
-  $('reduce').onchange = e => {
-    renderer.reduced = e.target.checked;
-    document.body.classList.toggle('reduce-motion', renderer.reduced);
-    save('null-tide-reduced', renderer.reduced);
+  const leave = () => { save('null-tide-rules-v5', true); closeModal(); mode = returnTo === 'title' ? 'title' : 'playing'; };
+  openModal(`<div class="micro">${first?'出航前の30秒ガイド':'いつでも読める航海ガイド'}</div>
+    <h2 id="modal-title">魚を集めて、もっと深い海へ。</h2>
+    <div class="guide-tabs" role="tablist" aria-label="あそびかた"><button role="tab" id="guide-flow" aria-selected="true">進め方</button><button role="tab" id="guide-controls" aria-selected="false">操作</button><button role="tab" id="guide-return" aria-selected="false">帰還・強化</button></div>
+    <div id="guide-panel" role="tabpanel"></div>
+    <div class="guide-footer"><label class="quality-toggle"><input type="checkbox" id="reduce" ${renderer.reduced?'checked':''}> 画面の揺れを抑える</label><button class="primary" id="close-help">${returnTo==='title'?'タイトルへ':first?'わかった、探索を始める':'探索に戻る'}</button></div>`, leave);
+  $('modal-content').classList.add('guide-sheet');$('modal-content').classList.toggle('intro-guide',first);
+  const pages = {
+    flow: `<ol class="guide-steps"><li><b>魚に近づいて「捕獲」を1回タップ。</b><span>網を構えたまま移動できます。円の中に魚を保つと捕獲完了。大きい魚・レアな魚ほど時間がかかります。</span></li><li><b>次へ進むには、潮流鍵を1つ。</b><span>金色の点線をたどって、水色の鍵を回収。3つ全部を探す必要はありません。神殿の謎を解いて開放することもできます。</span></li><li><b>黄色の潜降口で「潜る」をタップ。</b><span>装備を1つ選ぶと、300 m深い海へ。新しい魚と高い査定額が待っています。残りの鍵・神殿は自由に探索できます。</span></li></ol><p class="guide-note">目標は全${SPECIES.length}種の図鑑完成。次の行き先は画面上の「次へ」に表示します。この説明はメニューからいつでも読めます。</p>`,
+    controls: `<div class="controls-grid"><div class="control"><b>移動</b><small>${mobile()?'左下をドラッグ。右手で捕獲・加速を同時に使えます。':'WASD / 矢印キー。曲がる前は少し減速しましょう。'}</small></div><div class="control"><b>捕獲 ${mobile()?'':'[F]'}</b><small>1回押して開始、もう1回で解除。1匹捕まえると自動で解除。</small></div><div class="control"><b>加速 ${mobile()?'':'[Shift]'}</b><small>逃げる・速く移動する。加速中は無敵ですが、魚が驚きます。</small></div><div class="control"><b>調べる ${mobile()?'':'[E]'}</b><small>鍵・神殿・潜降口の近くに現れるボタンを1回押します。</small></div><div class="control"><b>道具 ${mobile()?'':'[Q / Space]'}</b><small>餌で魚をおびき寄せ、ソナーで暗い場所を確認。ソナーの音は監視機にも届きます。</small></div><div class="control"><b>図鑑・海図 ${mobile()?'':'[J]'}</b><small>左上の魚マークで図鑑、鍵の表示で海図。メニューで休憩 ${mobile()?'':'[Esc]'}。</small></div></div>`,
+    return: `<ol class="guide-steps"><li><b>酸素が減ったら、補給ブイへ。</b><span>出発地点の緑色の基地で酸素・耐久を何度でも回復。失敗しても図鑑・鍵・到達深度は残ります。</span></li><li><b>メニュー → ワープで、開拓済みの海へ。</b><span>一度到達した深度へは無料で移動できます。上昇口から1段ずつ戻ることもできます。</span></li><li><b>浅瀬のゲンさんに売って、潜水艇を強化。</b><span>メニュー → 浅瀬の商人。遠くにいる場合はワープで200 mへ。積み荷を売り、エンジン・タンク・網を購入できます。</span></li></ol><p class="guide-note">進行は自動保存。別端末へ移るときは「データ引継ぎ」で署名付きコードを作って保存してください。</p>`
   };
-  $('close-help').onclick = leave;
+  let introStep=0;
+  const introSteps=[['魚に近づいて、捕獲をタップ。',mobile()?'左下をドラッグして移動。右の「捕獲」を1回押し、魚を円の中に保つと捕まえられます。':'WASD / 矢印で移動。Fで網を構え、近くの魚を円の中に保つと捕獲できます。'],['潜る条件は、潮流鍵を1つ。','金色の点線をたどり、水色の鍵の近くで「回収」をタップ。3つ全部は不要です。神殿の謎解きでも開放できます。'],['黄色い潜降口から、300 m深くへ。','装備を1つ選んで次の海へ。探索済みの深度はメニューから無料ワープ。浅瀬では魚を売って潜水艇を強化できます。']];
+  const select = name => { for(const id of ['flow','controls','return'])$('guide-'+id).setAttribute('aria-selected',String(id===name));$('guide-panel').setAttribute('aria-labelledby','guide-'+name);$('guide-panel').innerHTML=first&&name==='flow'?`<p class="intro-count">出航ガイド ${introStep+1} / 3</p><div class="intro-step"><h3>${introSteps[introStep][0]}</h3><p>${introSteps[introStep][1]}</p></div>`:pages[name];$('modal-content').scrollTop=0; };
+  for(const id of ['flow','controls','return'])$('guide-'+id).onclick=()=>select(id);
+  select('flow');if(first)text('close-help','次へ →');$('close-help').onclick=()=>{if(first&&introStep<2){introStep++;select('flow');text('close-help',introStep===2?'探索を始める':'次へ →');}else leave();};
+  $('reduce').onchange=e=>{renderer.reduced=e.target.checked;document.body.classList.toggle('reduce-motion',renderer.reduced);save('null-tide-reduced',renderer.reduced);};
 }
 
 function journal(returnTo=mode,showChart=false) {
@@ -242,10 +236,10 @@ function journal(returnTo=mode,showChart=false) {
   const leave=()=>{closeModal();mode=returnTo==='title'?'title':'playing';};
   const known=Object.keys(catalog).length,benefit=depthBenefits(game.maxSector);
   openModal(`<div class="micro">海洋調査ノート · 記録は自動保存</div><h2 id="modal-title">世界の魚、${SPECIES.length.toLocaleString()} 種。</h2>
-    <p>${sectorInfo(game.sector).name} · 水深 ${sectorInfo(game.sector).depth.toLocaleString()} m · 潮流鍵 ${game.map.cores.filter(k=>k.done).length}/3<br>開拓ボーナス：酸素 ${benefit.oxygen}秒 / 捕獲速度 ×${benefit.capture.toFixed(2)} / この深度の報酬 ×${depthBenefits(game.sector).reward.toFixed(2)}</p>
+    <p>${sectorInfo(game.sector).name} · 水深 ${sectorInfo(game.sector).depth.toLocaleString()} m · 潮流鍵 ${game.map.cores.filter(k=>k.done).length}/3（1つで開放）<br>開拓ボーナス：酸素 ${benefit.oxygen}秒 / 捕獲速度 ×${benefit.capture.toFixed(2)} / この深度の報酬 ×${depthBenefits(game.sector).reward.toFixed(2)}</p>
     <div class="journal-tabs" role="tablist"><button id="codex-tab" role="tab" aria-selected="true">魚図鑑 ${known.toLocaleString()} / ${SPECIES.length.toLocaleString()}</button><button id="chart-tab" role="tab" aria-selected="false">海図・潮流鍵</button></div>
     <div id="codex-panel" role="tabpanel"><div class="catalog-filters"><input id="fish-search" type="search" placeholder="和名・学名・科名で検索" aria-label="魚の名前を検索"><select id="fish-filter" aria-label="図鑑の表示"><option value="all">すべて</option><option value="known">捕獲済み</option><option value="unknown">未捕獲</option><option value="depth">この深度で出会える魚</option></select></div><p id="catalog-results"></p><div id="catalog-grid" class="codex-grid"></div><div class="catalog-pages"><button id="fish-prev" class="secondary">前の24種</button><span id="fish-page"></span><button id="fish-next" class="secondary">次の24種</button></div><p>実在する魚の和名・学名を収録。出現深度・色・大きさはゲーム用の表現です。図鑑の全種類を、魚群を更新しながら捕獲できます。</p><a href="https://www.gbif.org/dataset/6b6b2923-0a10-4708-b170-5b7c611aceef" target="_blank" rel="noreferrer">名称データ：ENA taxonomy / GBIF ↗</a></div>
-    <div id="chart-panel" class="hidden" role="tabpanel"><p class="chart-legend">水色：潮流鍵（3つ＋神殿の謎で開放） / 紫：古代神殿 / 黄：潜降 / 青：上昇 / □：補給</p><p class="chart-explanation">上昇は自由です。集めた鍵と海図は再訪しても残ります。補給ブイで魚群を更新すると、未捕獲の魚を優先して探せます。</p><canvas id="large-chart" width="738" height="534" aria-label="潮流鍵と上下の移動口を示す海図"></canvas></div>
+    <div id="chart-panel" class="hidden" role="tabpanel"><p class="chart-legend">水色：潮流鍵（1つで開放） / 紫：古代神殿 / 黄：潜降 / 青：上昇 / □：補給</p><p class="chart-explanation">鍵1つ、または神殿の謎解きで次へ。上昇は自由です。集めた鍵と海図は再訪しても残ります。補給ブイで魚群を更新すると、未捕獲の魚を優先して探せます。</p><canvas id="large-chart" width="738" height="534" aria-label="潮流鍵と上下の移動口を示す海図"></canvas></div>
     <div class="modal-actions"><button class="primary" id="close-journal">${returnTo==='title'?'タイトルへ':'探索を続ける'}</button></div>`,leave);
   $('modal-content').classList.add('journal-sheet');let page=0;
   const draw=()=>{const q=$('fish-search').value.trim().toLowerCase(),filter=$('fish-filter').value,depth=sectorInfo(game.sector).depth;
@@ -272,10 +266,11 @@ function market(){
 }
 function ruinPuzzle(){
  mode='paused';holding=false;const leave=()=>{closeModal();mode='playing';};const symbols=['☀ 太陽','☾ 月','≈ 波'],order=game.map.puzzle;
- const ready=game.map.cores.every(k=>k.done);
- openModal(`<div class="micro">古代の潮流神殿</div><h2 id="modal-title">三つの紋章を並べよ。</h2><p>${ready?`鍵の碑文：「${symbols[order[0]]}は${symbols[order[1]]}より先。${symbols[order[2]]}は${symbols[order[1]]}より後。」<br>紋章を正しい順序で押すと潜降口が開きます。`:'碑文を読むには潮流鍵を3つ集める必要があります。海図の水色の結晶を探そう。'}</p><p id="puzzle-input">${ready?'選択：':'鍵 '+game.map.cores.filter(k=>k.done).length+'/3'}</p><div class="modal-actions">${ready?symbols.map((v,i)=>`<button class="secondary" data-symbol="${i}">${v}</button>`).join(''):''}</div>`,leave);
- let chosen=[];for(const b of document.querySelectorAll('[data-symbol]'))b.onclick=()=>{chosen.push(Number(b.dataset.symbol));text('puzzle-input',chosen.map(i=>symbols[i]).join(' → '));if(chosen.length===3){if(game.solve(chosen)){saveDive();leave();updateHUD();notify('神殿の封印を解除','潜降口が開きました。');}else{chosen=[];text('puzzle-input','順序が違うようだ。碑文を読み直そう。');}}};
+ openModal(`<div class="micro">古代の潮流神殿 · 鍵なしでも開放できる別ルート</div><h2 id="modal-title">三つの紋章を順番に。</h2><p>碑文：「${symbols[order[0]]}は${symbols[order[1]]}より先。${symbols[order[2]]}は${symbols[order[1]]}より後。」<br>正しい順序で3つ押すと潜降口が開きます。間違えてもペナルティはありません。</p><p id="puzzle-input" aria-live="polite">紋章を選んでください。</p><div class="modal-actions">${symbols.map((v,i)=>`<button class="secondary" data-symbol="${i}">${v}</button>`).join('')}<button class="text-button" id="puzzle-hint">ヒントを見る</button></div><p id="puzzle-hint-text"></p>`,leave);
+ $('puzzle-hint').onclick=()=>text('puzzle-hint-text',`順番は ${order.map(i=>symbols[i]).join(' → ')}。この順に押してみよう。`);
+ let chosen=[];for(const b of document.querySelectorAll('[data-symbol]'))b.onclick=()=>{chosen.push(Number(b.dataset.symbol));text('puzzle-input',chosen.map(i=>symbols[i]).join(' → '));if(chosen.length===3){if(game.solve(chosen)){saveDive();leave();updateHUD();notify('神殿の封印を解除','潜降口が開きました。');}else{chosen=[];text('puzzle-input','もう一度。迷ったら「ヒントを見る」を押そう。');}}};
 }
+
 function transferMenu(returnTo=mode){
  if(mode==='playing')mode='paused';const leave=()=>{closeModal();mode=returnTo==='title'?'title':'playing';};
  openModal(`<div class="micro">署名付きセーブコード</div><h2 id="modal-title">別の端末へ引き継ぐ</h2><p>コードを保存し、別の端末のこの画面へ貼り付けます。コードの書き換えはサーバー署名で検出します。コードを知る人は記録を復元できます。</p><textarea id="save-code" aria-label="引継ぎコード" rows="5" spellcheck="false"></textarea><p id="transfer-status"></p><div class="modal-actions"><button class="primary" id="export-save">コードを作る</button><button class="secondary" id="copy-save">コピー</button><button class="secondary" id="import-save">検証して引き継ぐ</button></div>`,leave);
@@ -342,7 +337,7 @@ function processEvents() {
       renderer.burst(event.x, event.y, event.type === 'core' ? '#f7d5a0' : '#9ed9c1', event.type === 'core' ? 45 : 12);
     }
     if (event.type === 'core') {
-      holding=false;saveDive();notify('潮流鍵を見つけた！',`${game.map.cores.filter(k=>k.done).length} / 3 · 3つ揃うと潜降口が開放されます`,3);
+      holding=false;saveDive();notify('潮流鍵を見つけた！','鍵1つで潜降口が開きました。点線をたどって戻ろう。',3);
     }
     if (event.type === 'catch') {
       netArmed=false;
@@ -355,7 +350,7 @@ function processEvents() {
     if(event.type==='ruin')ruinPuzzle();
     if(event.type==='ascent'){holding=false;renderer.setWorld(game.map);saveDive();notify(`${sectorInfo(game.sector).depth.toLocaleString()} m へ上昇`,'鍵・海図・捕獲記録はそのままです');}
     if(event.type==='school'){holding=false;notify('新しい魚群を発見','未捕獲の魚を優先して探せます');saveDive();}
-    if(event.type==='locked'){holding=false;notify('潜降口は閉じています',game.map.cores.every(k=>k.done)?'鍵は揃っています。古代神殿で碑文の順序を解こう。':'海図を開き、潮流鍵を3つ探そう。');}
+    if(event.type==='locked'){holding=false;notify('潜降口は閉じています','潮流鍵を1つ回収、または神殿の謎を解こう。金色の点線が鍵まで案内します。');}
     if(event.type==='site')holding=false;
     if(event.type==='site')notify(event.kind==='wreck'?'沈船から物資を回収しました':'生態調査ポイントを記録しました',event.kind==='wreck'?'+350 pt · 餌+2 · 酸素+40秒 · 耐久+1':'+450 pt · 餌+2 · 酸素+40秒 · 周辺の海図を更新',4);
     if(event.type==='discovery')notify(`発見：${event.name}`,'新たな探索地点を海図に記録 · +100 pt',2.5);
@@ -405,20 +400,22 @@ function updateHUD() {
   if(fish){show('fish-hint');text('fish-hint', `${SPECIES[fish.species].name} · ${fish.alert>.2?'驚いています。餌で落ち着かせよう':netArmed?'静かに近づこう':mobile()?'捕獲をタップ':'F で捕獲を開始'}`);}else hide('fish-hint');
   if(game.catchProgress>0){$('net-fill').style.width=`${game.catchProgress*100}%`;text('net-status',`${mobile()?'':'捕獲中 '}${Math.round(game.catchProgress*100)}%`);}
   const near = game.near();
-  text('gate-status',game.unlocked()?'鍵 ✓':`鍵 ${game.map.cores.filter(k=>k.done).length}/3`);
+  text('gate-status',game.unlocked()?'潜降 OK':'鍵 0/1');
   if ((['core','wreck','survey','descent','ascent','ruin'].includes(near?.kind)||(near?.kind==='base'&&game.map.fish.some(f=>f.caught)))) {
     show('interact');
-    text('interact-label',near.kind==='ruin'?'古代神殿を調べる':near.kind==='ascent'?`${sectorInfo(game.sector-1).depth.toLocaleString()} m へ上昇`:near.kind==='base'?(game.schoolCooldown>0?'魚群を探索中…':'新しい魚群を探す'):near.kind==='descent'?(game.unlocked()?`${sectorInfo(game.sector+1).depth.toLocaleString()} m へ潜る`:`潮流鍵 ${game.map.cores.filter(k=>k.done).length}/3 · 海図で確認`):holding?'調査中…':near.kind==='core'?'潮流鍵を回収':near.kind==='wreck'?'物資を回収':'周囲を調査');
+    text('interact-label',near.kind==='ruin'?'古代神殿を調べる':near.kind==='ascent'?`${sectorInfo(game.sector-1).depth.toLocaleString()} m へ上昇`:near.kind==='base'?(game.schoolCooldown>0?'魚群を探索中…':'新しい魚群を探す'):near.kind==='descent'?(game.unlocked()?`${sectorInfo(game.sector+1).depth.toLocaleString()} m へ潜る`:'鍵1つで開放 · 海図を開こう'):holding?'調査中…':near.kind==='core'?'潮流鍵を回収':near.kind==='wreck'?'物資を回収':'周囲を調査');
     $('interact-progress').style.width = `${(['core','wreck','survey'].includes(near.kind)?near.target.progress:near.kind==='descent'?Math.max(0,game.extraction/.3):0) * 100}%`;
   } else {
     hide('interact');
     holding = false;
   }
-  const target=game.map.cores.every(k=>k.done)&&!game.unlocked()?game.map.ruin:game.unlocked()?game.map.descent:[...game.map.cores].filter(k=>!k.done).sort((a,b)=>dist(p,a)-dist(p,b))[0]||game.map.descent;
-  $('waypoint').classList.toggle('waypoint-needed',dist(p,target)>450);
+  const target=game.objectiveTarget();
+  const nextLabel=game.unlocked()?'潜降口へ戻ろう':'潮流鍵を1つ探そう';
   const angle=Math.atan2(target.y-p.y,target.x-p.x);
   const arrow=['→','↘','↓','↙','←','↖','↑','↗'][(Math.round(angle/(Math.PI/4))+8)%8];
-  $('waypoint').innerHTML=`<span class="direction">${arrow}</span>${game.unlocked()?'潜降口':game.map.cores.every(k=>k.done)?'古代神殿':'潮流鍵'}<b>${Math.round(dist(p,target)/6)} m</b>`;
+  text('route-goal',`${arrow} 次へ：${nextLabel}`);
+  text('route-distance',`${Math.round(dist(p,target)/6)} m`);
+  $('waypoint').classList.remove('waypoint-needed');
   if(near?.kind==='base'&&(!fish||p.oxygen<game.maxOxygen-5)){show('fish-hint');text('fish-hint','基地で酸素・耐久を補給中');}
   if ($('map-toggle').getAttribute('aria-expanded') === 'true') renderer.minimap($('minimap'), game);
 }
@@ -454,6 +451,7 @@ bindGameAction($('net'), toggleNet, canPlay);
 bindGameAction($('dash'), dash, canPlay);
 bindGameAction($('pause'), pause, canPlay);
 bindGameAction($('objective'), () => journal(), canPlay);
+bindGameAction($('route-help'), () => help('playing'), canPlay);
 bindGameAction($('gate-status'), () => journal(mode,true), canPlay);
 bindGameAction($('pulse'), () => {pulse();setToolsExpanded(false);}, canPlay);
 bindGameAction($('bait'), () => {game.bait();updateHUD();setToolsExpanded(false);}, canPlay);
@@ -464,7 +462,7 @@ thumbStick = bindThumbStick($('movement-zone'), $('joystick'), $('joystick-knob'
 document.addEventListener('keydown', e => {
   if (!$('modal').classList.contains('hidden')) {
     if (e.code === 'Tab') {
-      const items = [...$('modal-content').querySelectorAll('button,a,input,select')].filter(el=>!el.disabled&&el.getClientRects().length);
+      const items = [...$('modal-content').querySelectorAll('button,a,input,select,textarea')].filter(el=>!el.disabled&&el.getClientRects().length);
       const first = items[0], last = items.at(-1);
       if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
       else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
@@ -478,7 +476,7 @@ document.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyE', 'KeyF', 'KeyQ', 'KeyJ'].includes(e.code)) e.preventDefault();
   if (e.code === 'Escape') { pause(); return; }
   if(e.code==='KeyJ'&&!e.repeat&&['title','playing'].includes(mode)){journal();return;}
-  const focusedControl = document.activeElement?.closest('button,a,input,select');
+  const focusedControl = document.activeElement?.closest('button,a,input,select,textarea');
   if (mode === 'title' && e.code === 'Enter' && (!focusedControl || focusedControl.id === 'start')) {
     e.preventDefault();
     start();

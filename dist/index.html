@@ -47,7 +47,7 @@
     <div class="mission">
       <div class="mission-heading"><span class="sector-number" id="sector-label">水深 200 m</span><h2 id="sector-name">サンゴの浅瀬</h2></div>
       <button class="objective" id="objective" aria-label="魚図鑑を開く">魚図鑑 <b>0 / 320</b></button>
-      <button id="gate-status" class="gate-status" aria-label="潮流鍵と海図を確認">鍵 0/3</button><button id="survey-progress" class="survey-progress">この深度の魚を探そう</button>
+      <button id="gate-status" class="gate-status" aria-label="潮流鍵と海図を確認">鍵 0/1</button><button id="survey-progress" class="survey-progress">この深度の魚を探そう</button>
     </div>
     <div class="ship-status">
       <div class="telemetry"><span>機体の耐久</span><div id="health" aria-label="機体の耐久"></div></div>
@@ -71,7 +71,7 @@
       <button id="map-toggle" aria-expanded="true"><span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#map"></use></svg>海底マップ</span><span id="map-symbol" aria-hidden="true">−</span></button>
       <div id="map-content"><canvas id="minimap" width="246" height="178" aria-label="黄は潜降口、四角は補給基地、白は自分の位置"></canvas><div class="map-legend"><i></i> 潜降口 <b>□</b> 補給基地</div></div>
     </div>
-    <div id="waypoint" class="waypoint"></div><div id="fish-hint" class="fish-hint hidden"></div>
+    <button id="route-help" class="route-help" aria-label="次の目標とルールを確認"><span id="route-goal">次へ：潮流鍵を1つ探そう</span><b id="route-distance"></b><small>ルール ?</small></button><div id="waypoint" class="waypoint"></div><div id="fish-hint" class="fish-hint hidden"></div>
     <div id="interact" class="interact hidden"><button id="interact-button"><kbd>E</kbd><span id="interact-label">タップで調べる</span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#archive"></use></svg><i id="interact-progress"></i></button></div>
     <div id="movement-zone" aria-label="左側をドラッグして移動"><div id="joystick" aria-label="ドラッグして移動"><div id="joystick-knob"></div><span>移動</span></div></div>
     <div class="movement-hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>移動</span></div>
